@@ -3,6 +3,7 @@ import requests
 import sqlite3
 import json
 import time
+import threading
 import concurrent.futures
 from pathlib import Path
 import yfinance as yf
@@ -10,8 +11,8 @@ import yfinance as yf
 app = Flask(__name__)
 
 DB_PATH = Path(__file__).parent / 'cache.db'
-CACHE_TTL       = 60 * 60 * 24   # 経済指標: 24時間
-STOCK_CACHE_TTL = 60 * 60        # 株・金利: 1時間
+CACHE_TTL       = 60 * 60 * 24
+STOCK_CACHE_TTL = 60 * 60
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -23,23 +24,37 @@ INDICATORS = {
     'unemployment':  ('SL.UEM.TOTL.ZS',    '失業率'),
     'current_acct':  ('BN.CAB.XOKA.GD.ZS', '経常収支(GDP比%)'),
     'trade_balance': ('NE.RSB.GNFS.ZS',    '貿易収支(GDP比%)'),
-    'lending_rate':  ('FR.INR.LEND',        '貸出金利'),
-    'deposit_rate':  ('FR.INR.DPST',        '預金金利'),
 }
 
 STOCK_INDICES = {
-    '^N225':    {'name': '日経225',    'country': 'JP'},
-    '^GSPC':    {'name': 'S&P500',    'country': 'US'},
-    '^GDAXI':   {'name': 'DAX',       'country': 'DE'},
-    '^FTSE':    {'name': 'FTSE100',   'country': 'GB'},
-    '000001.SS':{'name': '上海総合',  'country': 'CN'},
+    '^N225':    {'name': '日経225',   'country': 'JP'},
+    '^GSPC':    {'name': 'S&P500',   'country': 'US'},
+    '^GDAXI':   {'name': 'DAX',      'country': 'DE'},
+    '^FTSE':    {'name': 'FTSE100',  'country': 'GB'},
+    '000001.SS':{'name': '上海総合', 'country': 'CN'},
 }
 
 BOND_TICKERS = {
-    '^TNX':   {'name': '米国10年債利回り', 'country': 'US'},
-    '^FVX':   {'name': '米国5年債利回り',  'country': 'US'},
-    '^TYX':   {'name': '米国30年債利回り', 'country': 'US'},
-    '^IRX':   {'name': '米国3ヶ月TB',     'country': 'US'},
+    '^TNX': {'name': '米国10年債', 'country': 'US'},
+    '^FVX': {'name': '米国5年債',  'country': 'US'},
+    '^TYX': {'name': '米国30年債', 'country': 'US'},
+    '^IRX': {'name': '米国3ヶ月',  'country': 'US'},
+}
+
+# FRED series IDs
+FRED_SERIES = {
+    'bond10yr': {
+        'US': 'IRLTLT01USM156N',
+        'JP': 'IRLTLT01JPM156N',
+        'DE': 'IRLTLT01DEM156N',
+        'GB': 'IRLTLT01GBM156N',
+    },
+    'policy': {
+        'US': 'FEDFUNDS',
+        'JP': 'IRSTCI01JPM156N',
+        'DE': 'IRSTCI01DEM156N',
+        'GB': 'IRSTCI01GBM156N',
+    },
 }
 
 # ---------- DB ----------
@@ -58,6 +73,8 @@ def init_db():
             id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS stock_cache (
             ticker TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS oecd_cache (
+            indicator TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
 
 def is_fresh(updated_at, ttl=CACHE_TTL):
     return (time.time() - updated_at) < ttl
@@ -123,7 +140,7 @@ def get_exchange():
         return json.loads(row['data'])
     return fetch_and_cache_exchange()
 
-# ---------- 株・金利 (yfinance) ----------
+# ---------- 株・米国債 (yfinance) ----------
 
 def fetch_yf(ticker):
     try:
@@ -132,11 +149,11 @@ def fetch_yf(ticker):
         if hist.empty:
             return None
         fi = t.fast_info
-        current   = round(float(fi.last_price), 2)
-        prev      = round(float(fi.previous_close), 2)
-        change_p  = round((current - prev) / prev * 100, 2) if prev else 0
-        history   = [(str(d.date()), round(float(v), 2))
-                     for d, v in zip(hist.index, hist['Close'])]
+        current  = round(float(fi.last_price), 2)
+        prev     = round(float(fi.previous_close), 2)
+        change_p = round((current - prev) / prev * 100, 2) if prev else 0
+        history  = [(str(d.date()), round(float(v), 2))
+                    for d, v in zip(hist.index, hist['Close'])]
         return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history}
     except Exception:
         return None
@@ -157,34 +174,79 @@ def get_stock(ticker):
         return json.loads(row['data'])
     return fetch_and_cache_stock(ticker)
 
+# ---------- FRED 10年国債・政策金利 ----------
+
+def fetch_fred(series_id, start_year=2013):
+    url = f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}'
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        rows = []
+        for line in r.text.strip().split('\n')[1:]:
+            parts = line.strip().split(',')
+            if len(parts) == 2 and parts[1] and parts[1] != '.':
+                date, val = parts[0][:7], parts[1]  # "YYYY-MM"
+                if int(date[:4]) >= start_year:
+                    rows.append((date, round(float(val), 3)))
+        return rows
+    except Exception as e:
+        print(f'FRED {series_id} error: {e}')
+        return []
+
+def fetch_and_cache_rates(rate_type):
+    series_map = FRED_SERIES[rate_type]
+    result = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {code: ex.submit(fetch_fred, sid) for code, sid in series_map.items()}
+        for code, fut in futures.items():
+            result[code] = fut.result()
+    with get_db() as conn:
+        conn.execute('INSERT OR REPLACE INTO oecd_cache VALUES (?,?,?)',
+                     (rate_type, json.dumps(result), time.time()))
+    return result
+
+def get_rates(rate_type):
+    with get_db() as conn:
+        row = conn.execute('SELECT data, updated_at FROM oecd_cache WHERE indicator=?',
+                           (rate_type,)).fetchone()
+    if row and is_fresh(row['updated_at']):
+        return json.loads(row['data'])
+    return fetch_and_cache_rates(rate_type)
+
 # ---------- 起動時プリフェッチ ----------
 
 def prefetch_all():
     print('DBキャッシュ確認中...')
-    tasks_ind, tasks_stk = [], []
     with get_db() as conn:
-        for country in COUNTRIES:
-            for key, (ind_code, _) in INDICATORS.items():
-                row = conn.execute('SELECT updated_at FROM indicator_cache WHERE country=? AND key=?',
-                                   (country, key)).fetchone()
-                if not row or not is_fresh(row['updated_at']):
-                    tasks_ind.append((country, key, ind_code))
-        for ticker in {**STOCK_INDICES, **BOND_TICKERS}:
-            row = conn.execute('SELECT updated_at FROM stock_cache WHERE ticker=?',
-                               (ticker,)).fetchone()
-            if not row or not is_fresh(row['updated_at'], STOCK_CACHE_TTL):
-                tasks_stk.append(ticker)
+        tasks_ind = [(c, k, ic) for c in COUNTRIES
+                     for k, (ic, _) in INDICATORS.items()
+                     if not (row := conn.execute(
+                         'SELECT updated_at FROM indicator_cache WHERE country=? AND key=?',
+                         (c, k)).fetchone()) or not is_fresh(row['updated_at'])]
+
+        tasks_stk = [tk for tk in {**STOCK_INDICES, **BOND_TICKERS}
+                     if not (row := conn.execute(
+                         'SELECT updated_at FROM stock_cache WHERE ticker=?',
+                         (tk,)).fetchone()) or not is_fresh(row['updated_at'], STOCK_CACHE_TTL)]
+
+        tasks_oecd = [rt for rt in ['bond10yr', 'policy']
+                      if not (row := conn.execute(
+                          'SELECT updated_at FROM oecd_cache WHERE indicator=?',
+                          (rt,)).fetchone()) or not is_fresh(row['updated_at'])]
+
         ex_row = conn.execute('SELECT updated_at FROM exchange_cache WHERE id=1').fetchone()
         need_ex = not ex_row or not is_fresh(ex_row['updated_at'])
 
-    total = len(tasks_ind) + len(tasks_stk) + (1 if need_ex else 0)
+    total = len(tasks_ind) + len(tasks_stk) + len(tasks_oecd) + (1 if need_ex else 0)
     if total:
-        print(f'APIから取得中... (経済指標{len(tasks_ind)}件, 株/金利{len(tasks_stk)}件)')
+        print(f'APIから取得中... (指標{len(tasks_ind)}, 株{len(tasks_stk)}, OECD{len(tasks_oecd)})')
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
             for c, k, ic in tasks_ind:
                 ex.submit(fetch_and_cache_indicator, c, k, ic)
             for tk in tasks_stk:
                 ex.submit(fetch_and_cache_stock, tk)
+            for rt in tasks_oecd:
+                ex.submit(fetch_and_cache_rates, rt)
             if need_ex:
                 ex.submit(fetch_and_cache_exchange)
         print('キャッシュ完了！')
@@ -231,35 +293,33 @@ def api_summary():
 def api_markets():
     result = {'stocks': {}, 'bonds': {}}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        stock_futs = {tk: ex.submit(get_stock, tk) for tk in STOCK_INDICES}
-        bond_futs  = {tk: ex.submit(get_stock, tk) for tk in BOND_TICKERS}
-        for tk, fut in stock_futs.items():
+        sf = {tk: ex.submit(get_stock, tk) for tk in STOCK_INDICES}
+        bf = {tk: ex.submit(get_stock, tk) for tk in BOND_TICKERS}
+        for tk, fut in sf.items():
             d = fut.result()
             if d:
                 result['stocks'][tk] = {**d, **STOCK_INDICES[tk]}
-        for tk, fut in bond_futs.items():
+        for tk, fut in bf.items():
             d = fut.result()
             if d:
                 result['bonds'][tk] = {**d, **BOND_TICKERS[tk]}
     return jsonify(result)
 
-@app.route('/api/cache-status')
-def cache_status():
-    with get_db() as conn:
-        rows = conn.execute('SELECT country, key, updated_at FROM indicator_cache').fetchall()
-        ex_row = conn.execute('SELECT updated_at FROM exchange_cache WHERE id=1').fetchone()
-    result = [{'country': r['country'], 'key': r['key'],
-               'age_min': int((time.time()-r['updated_at'])/60),
-               'fresh': is_fresh(r['updated_at'])} for r in rows]
-    return jsonify({'indicators': result,
-                    'exchange': {'age_min': int((time.time()-ex_row['updated_at'])/60),
-                                 'fresh': is_fresh(ex_row['updated_at'])} if ex_row else None})
-
-import threading
+@app.route('/api/interest_rates')
+def api_interest_rates():
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f_bond   = ex.submit(get_rates, 'bond10yr')
+        f_policy = ex.submit(get_rates, 'policy')
+    country_names = {'JP': '日本', 'US': 'アメリカ', 'DE': 'ドイツ', 'GB': 'イギリス'}
+    return jsonify({
+        'bond10yr': {k: {'data': v, 'name': country_names.get(k, k)}
+                     for k, v in f_bond.result().items()},
+        'policy':   {k: {'data': v, 'name': country_names.get(k, k)}
+                     for k, v in f_policy.result().items()},
+    })
 
 def start_prefetch():
-    t = threading.Thread(target=prefetch_all, daemon=True)
-    t.start()
+    threading.Thread(target=prefetch_all, daemon=True).start()
 
 init_db()
 start_prefetch()

@@ -211,24 +211,21 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <div id="stock-cards" class="cards-grid">
       <div class="loading"><div class="spinner"></div>データ取得中...</div>
     </div>
-    <p class="section-title" style="margin-top:8px">株価指数 推移（1年）</p>
+    <p class="section-title" style="margin-top:8px">株価指数 推移（1年・騰落率）</p>
     <div class="chart-card" style="margin-bottom:20px">
-      <div class="chart-wrap" style="height:320px"><canvas id="chart-stocks"></canvas></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-stocks"></canvas></div>
+    </div>
+    <p class="section-title" style="margin-top:8px">各国 10年国債利回り 推移 (%)</p>
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-bond10yr"></canvas></div>
+    </div>
+    <p class="section-title" style="margin-top:8px">各国 政策金利（短期金利）推移 (%)</p>
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-policy-rate"></canvas></div>
     </div>
     <p class="section-title">米国債利回り（現在値）</p>
     <div id="bond-cards" class="cards-grid">
       <div class="loading"><div class="spinner"></div>データ取得中...</div>
-    </div>
-    <p class="section-title" style="margin-top:8px">政策金利・貸出金利 推移</p>
-    <div class="charts-grid">
-      <div class="chart-card">
-        <h3>🏦 貸出金利 (%)</h3>
-        <div class="chart-wrap"><canvas id="chart-lending"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <h3>💰 預金金利 (%)</h3>
-        <div class="chart-wrap"><canvas id="chart-deposit"></canvas></div>
-      </div>
     </div>
   </div>
 
@@ -585,11 +582,51 @@ async function loadMarkets() {
         </div>`;
     }
 
-    // 貸出・預金金利チャート
-    if (indicatorData) {
-      drawMultiChart('chart-lending', indicatorData.countries, 'lending_rate');
-      drawMultiChart('chart-deposit', indicatorData.countries, 'deposit_rate');
+    // 10年国債・政策金利チャート（OECD）
+    const rateRes = await fetch('/api/interest_rates');
+    const rateData = await rateRes.json();
+    const rateColors = { JP:'#00cfff', US:'#00ff88', DE:'#ffcc00', GB:'#dd88ff' };
+
+    function drawRateChart(canvasId, seriesObj, titleText) {
+      const allPeriods = new Set();
+      Object.values(seriesObj).forEach(c => c.data.forEach(([p]) => allPeriods.add(p)));
+      const rLabels = [...allPeriods].sort();
+      const rDatasets = Object.entries(seriesObj).map(([code, c]) => {
+        const map = Object.fromEntries(c.data);
+        return {
+          label: c.name,
+          data: rLabels.map(p => map[p] ?? null),
+          borderColor: rateColors[code] ?? '#aaa',
+          backgroundColor: (rateColors[code] ?? '#aaa') + '20',
+          borderWidth: 2, tension: 0.3, fill: false,
+          pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
+        };
+      });
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      if (charts[canvasId]) charts[canvasId].destroy();
+      charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels: rLabels, datasets: rDatasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#8b949e', boxWidth: 12, font: { size: 11 } } },
+            tooltip: {
+              backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+              titleColor: '#e6edf3', bodyColor: '#8b949e',
+              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}%` }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#8b949e', maxTicksLimit: 15, font: { size: 10 } }, grid: { color: '#21262d' } },
+            y: { ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' } }
+          }
+        }
+      });
     }
+
+    drawRateChart('chart-bond10yr',    rateData.bond10yr, '10年国債利回り');
+    drawRateChart('chart-policy-rate', rateData.policy,   '政策金利（短期）');
 
     marketsLoaded = true;
   } catch(e) {
