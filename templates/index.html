@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>経済指標ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --red: #f85149; --yellow: #d29922;
+  --purple: #bc8cff; --orange: #ffa657;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon { font-size: 1.5rem; }
+.logo h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+.logo span { font-size: 0.75rem; color: var(--muted); }
+#clock { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+
+.section-title {
+  font-size: 0.75rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 12px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Tab bar */
+.tab-bar {
+  display: flex; gap: 4px; margin-bottom: 24px;
+  background: var(--surface); padding: 4px;
+  border-radius: 8px; border: 1px solid var(--border);
+  width: fit-content;
+}
+.tab {
+  padding: 8px 20px; border-radius: 6px; cursor: pointer;
+  font-size: 0.9rem; font-weight: 500; transition: all .15s;
+  color: var(--muted); border: none; background: transparent;
+}
+.tab.active { background: var(--accent); color: #fff; }
+.tab:hover:not(.active) { background: var(--border); color: var(--text); }
+
+/* Exchange rate bar */
+#exchange-bar {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 20px; margin-bottom: 24px;
+  display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
+}
+.ex-item { display: flex; flex-direction: column; gap: 2px; }
+.ex-pair { font-size: 0.7rem; color: var(--muted); }
+.ex-val { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ex-updated { font-size: 0.7rem; color: var(--muted); margin-left: auto; align-self: flex-end; }
+
+/* Summary cards */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 6px;
+  transition: border-color .2s;
+}
+.card:hover { border-color: var(--accent); }
+.card-label { font-size: 0.72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.card-country { font-size: 0.8rem; color: var(--text); }
+.card-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-year { font-size: 0.7rem; color: var(--muted); }
+.card-value.pos { color: var(--green); }
+.card-value.neg { color: var(--red); }
+.card-value.neu { color: var(--accent); }
+
+/* Charts section */
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(580px, 1fr)); gap: 20px; }
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px;
+}
+.chart-card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+.chart-wrap { position: relative; height: 250px; }
+
+/* Country panel */
+#country-panel { display: none; }
+.country-detail {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+.detail-chart-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px;
+}
+.detail-chart-card h3 { font-size: 0.85rem; color: var(--muted); margin-bottom: 14px; }
+.detail-chart-wrap { position: relative; height: 200px; }
+
+/* Loading / error */
+.loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 0.9rem; padding: 40px 0;
+}
+.spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.badge.up { background: #3fb95020; color: var(--green); }
+.badge.down { background: #f8514920; color: var(--red); }
+
+@media (max-width: 768px) {
+  .charts-grid { grid-template-columns: 1fr; }
+  .country-detail { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <span class="logo-icon">📊</span>
+    <div>
+      <h1>経済指標ダッシュボード</h1>
+      <span>World Bank データ</span>
+    </div>
+  </div>
+  <div id="clock"></div>
+</header>
+
+<main>
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab active" onclick="switchTab('overview')">概要</button>
+    <button class="tab" onclick="switchTab('gdp')">GDP成長率</button>
+    <button class="tab" onclick="switchTab('inflation')">インフレ率</button>
+    <button class="tab" onclick="switchTab('unemployment')">失業率</button>
+    <button class="tab" onclick="switchTab('country')">国別詳細</button>
+  </div>
+
+  <!-- Exchange rates -->
+  <div id="exchange-bar">
+    <div class="spinner"></div>
+    <span style="color:var(--muted);font-size:.85rem">為替レート読み込み中...</span>
+  </div>
+
+  <!-- Overview panel -->
+  <div id="overview-panel">
+    <p class="section-title">最新の主要指標</p>
+    <div id="summary-cards" class="cards-grid">
+      <div class="loading"><div class="spinner"></div>データ取得中...</div>
+    </div>
+    <p class="section-title" style="margin-top:8px">指標推移（全国比較）</p>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📈 GDP 成長率 (%)</h3>
+        <div class="chart-wrap"><canvas id="chart-gdp"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>🔥 インフレ率 / CPI (%)</h3>
+        <div class="chart-wrap"><canvas id="chart-inf"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>👷 失業率 (%)</h3>
+        <div class="chart-wrap"><canvas id="chart-unemp"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>⚖️ 経常収支 (GDP比 %)</h3>
+        <div class="chart-wrap"><canvas id="chart-ca"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Single-indicator panels -->
+  <div id="gdp-panel" style="display:none">
+    <p class="section-title">GDP 成長率の推移</p>
+    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-gdp-big"></canvas></div></div>
+  </div>
+  <div id="inflation-panel" style="display:none">
+    <p class="section-title">インフレ率 (CPI) の推移</p>
+    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-inf-big"></canvas></div></div>
+  </div>
+  <div id="unemployment-panel" style="display:none">
+    <p class="section-title">失業率の推移</p>
+    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-unemp-big"></canvas></div></div>
+  </div>
+
+  <!-- Country detail panel -->
+  <div id="country-panel">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap" id="country-tabs"></div>
+    <div id="country-detail-content"></div>
+  </div>
+</main>
+
+<script>
+const COUNTRY_COLORS = {
+  JP: '#58a6ff', US: '#3fb950', CN: '#f85149', DE: '#d29922', GB: '#bc8cff'
+};
+const COUNTRY_NAMES = { JP:'日本', US:'アメリカ', CN:'中国', DE:'ドイツ', GB:'イギリス' };
+
+let indicatorData = null;
+let charts = {};
+let activeCountry = 'JP';
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleDateString('ja-JP') + ' ' + now.toLocaleTimeString('ja-JP');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Tab switching
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','country'][i] === tab);
+  });
+  ['overview','gdp','inflation','unemployment','country'].forEach(id => {
+    document.getElementById(id + '-panel').style.display = id === tab ? '' : 'none';
+  });
+  if (tab !== 'overview' && indicatorData) renderBigChart(tab);
+}
+
+// Exchange rates
+async function loadExchange() {
+  try {
+    const res = await fetch('/api/exchange');
+    const data = await res.json();
+    const bar = document.getElementById('exchange-bar');
+    bar.innerHTML = '';
+    for (const [pair, val] of Object.entries(data.rates)) {
+      bar.innerHTML += `
+        <div class="ex-item">
+          <span class="ex-pair">USD / ${pair}</span>
+          <span class="ex-val">${val.toLocaleString()}</span>
+        </div>`;
+    }
+    bar.innerHTML += `<span class="ex-updated">更新: ${data.updated.substring(0, 25)}</span>`;
+  } catch(e) {
+    document.getElementById('exchange-bar').innerHTML = '<span style="color:var(--red)">為替データ取得失敗</span>';
+  }
+}
+
+// Summary cards
+async function loadSummary() {
+  try {
+    const res = await fetch('/api/summary');
+    const data = await res.json();
+    const grid = document.getElementById('summary-cards');
+    grid.innerHTML = '';
+
+    const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct'];
+    for (const key of indicatorKeys) {
+      for (const [code, cdata] of Object.entries(data)) {
+        if (!cdata[key]) continue;
+        const { value, year, label } = cdata[key];
+        const cls = key === 'unemployment' ? (value < 5 ? 'pos' : value > 8 ? 'neg' : 'neu')
+                  : (value >= 0 ? 'pos' : 'neg');
+        grid.innerHTML += `
+          <div class="card">
+            <span class="card-label">${label}</span>
+            <span class="card-country">${COUNTRY_NAMES[code] ?? code}</span>
+            <span class="card-value ${cls}">${value > 0 ? '+' : ''}${value}%</span>
+            <span class="card-year">${year}年</span>
+          </div>`;
+      }
+    }
+  } catch(e) {
+    document.getElementById('summary-cards').innerHTML = '<span style="color:var(--red)">データ取得失敗</span>';
+  }
+}
+
+// Indicator charts (overview)
+async function loadIndicators() {
+  const res = await fetch('/api/indicators');
+  indicatorData = await res.json();
+  const { countries } = indicatorData;
+
+  drawMultiChart('chart-gdp',    countries, 'gdp_growth');
+  drawMultiChart('chart-inf',    countries, 'inflation');
+  drawMultiChart('chart-unemp',  countries, 'unemployment');
+  drawMultiChart('chart-ca',     countries, 'current_acct');
+
+  buildCountryTabs();
+}
+
+function buildDatasets(countries, key) {
+  const allYears = new Set();
+  for (const cdata of Object.values(countries)) {
+    (cdata[key] || []).forEach(([y]) => allYears.add(y));
+  }
+  const labels = [...allYears].sort();
+  const datasets = Object.entries(countries).map(([code, cdata]) => {
+    const map = Object.fromEntries(cdata[key] || []);
+    return {
+      label: COUNTRY_NAMES[code] ?? code,
+      data: labels.map(y => map[y] ?? null),
+      borderColor: COUNTRY_COLORS[code] ?? '#888',
+      backgroundColor: (COUNTRY_COLORS[code] ?? '#888') + '20',
+      tension: 0.3, fill: false,
+      pointRadius: 3, pointHoverRadius: 6,
+      spanGaps: true,
+    };
+  });
+  return { labels, datasets };
+}
+
+function chartOptions(title) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#8b949e', boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+        titleColor: '#e6edf3', bodyColor: '#8b949e',
+        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}%` }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#8b949e', maxRotation: 45, font: { size: 10 } }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', font: { size: 10 },
+                    callback: v => v + '%' }, grid: { color: '#21262d' } }
+    }
+  };
+}
+
+function drawMultiChart(canvasId, countries, key) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const { labels, datasets } = buildDatasets(countries, key);
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line', data: { labels, datasets }, options: chartOptions()
+  });
+}
+
+function renderBigChart(tab) {
+  const keyMap = { gdp: 'gdp_growth', inflation: 'inflation', unemployment: 'unemployment' };
+  const key = keyMap[tab];
+  if (!key || !indicatorData) return;
+  const canvasId = `chart-${tab}-big`;
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const { labels, datasets } = buildDatasets(indicatorData.countries, key);
+  charts[canvasId] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: datasets.map(d => ({ ...d, fill: false })) },
+    options: {
+      ...chartOptions(),
+      scales: {
+        x: { ticks: { color: '#8b949e', maxRotation: 45 }, grid: { color: '#21262d' }, stacked: false },
+        y: { ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+}
+
+// Country detail
+function buildCountryTabs() {
+  const container = document.getElementById('country-tabs');
+  container.innerHTML = '';
+  for (const [code, name] of Object.entries(COUNTRY_NAMES)) {
+    container.innerHTML += `
+      <button class="tab${code === activeCountry ? ' active' : ''}"
+        onclick="showCountry('${code}')">${name}</button>`;
+  }
+  showCountry(activeCountry);
+}
+
+function showCountry(code) {
+  activeCountry = code;
+  document.querySelectorAll('#country-tabs .tab').forEach((t, i) => {
+    t.classList.toggle('active', Object.keys(COUNTRY_NAMES)[i] === code);
+  });
+
+  if (!indicatorData) return;
+  const cdata = indicatorData.countries[code];
+  if (!cdata) return;
+
+  const content = document.getElementById('country-detail-content');
+  content.innerHTML = `
+    <div class="country-detail">
+      <div class="detail-chart-card">
+        <h3>📈 GDP 成長率</h3>
+        <div class="detail-chart-wrap"><canvas id="dc-gdp"></canvas></div>
+      </div>
+      <div class="detail-chart-card">
+        <h3>🔥 インフレ率</h3>
+        <div class="detail-chart-wrap"><canvas id="dc-inf"></canvas></div>
+      </div>
+      <div class="detail-chart-card">
+        <h3>👷 失業率</h3>
+        <div class="detail-chart-wrap"><canvas id="dc-unemp"></canvas></div>
+      </div>
+      <div class="detail-chart-card">
+        <h3>⚖️ 経常収支 (GDP比%)</h3>
+        <div class="detail-chart-wrap"><canvas id="dc-ca"></canvas></div>
+      </div>
+    </div>`;
+
+  const color = COUNTRY_COLORS[code] ?? '#58a6ff';
+  drawSingleCountry('dc-gdp',   cdata.gdp_growth,   color);
+  drawSingleCountry('dc-inf',   cdata.inflation,     color);
+  drawSingleCountry('dc-unemp', cdata.unemployment,  color);
+  drawSingleCountry('dc-ca',    cdata.current_acct,  color);
+}
+
+function drawSingleCountry(canvasId, rows, color) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  const ctx = el.getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const labels = (rows || []).map(r => r[0]);
+  const values = (rows || []).map(r => r[1]);
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: values, borderColor: color,
+        backgroundColor: color + '25',
+        fill: true, tension: 0.3, pointRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: { label: ctx => ` ${ctx.parsed.y?.toFixed(2)}%` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+}
+
+// Boot
+(async () => {
+  await Promise.all([loadExchange(), loadSummary()]);
+  await loadIndicators();
+})();
+</script>
+</body>
+</html>
