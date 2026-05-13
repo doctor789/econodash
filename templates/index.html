@@ -145,6 +145,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <button class="tab" onclick="switchTab('gdp')">GDP成長率</button>
     <button class="tab" onclick="switchTab('inflation')">インフレ率</button>
     <button class="tab" onclick="switchTab('unemployment')">失業率</button>
+    <button class="tab" onclick="switchTab('trade')">貿易収支</button>
     <button class="tab" onclick="switchTab('country')">国別詳細</button>
   </div>
 
@@ -178,6 +179,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
         <h3>⚖️ 経常収支 (GDP比 %)</h3>
         <div class="chart-wrap"><canvas id="chart-ca"></canvas></div>
       </div>
+      <div class="chart-card">
+        <h3>🚢 貿易収支 (GDP比 %)</h3>
+        <div class="chart-wrap"><canvas id="chart-trade"></canvas></div>
+      </div>
     </div>
   </div>
 
@@ -194,6 +199,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <p class="section-title">失業率の推移</p>
     <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-unemp-big"></canvas></div></div>
   </div>
+  <div id="trade-panel" style="display:none">
+    <p class="section-title">貿易収支の推移 (GDP比 %)</p>
+    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-trade-big"></canvas></div></div>
+  </div>
 
   <!-- Country detail panel -->
   <div id="country-panel">
@@ -204,7 +213,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
 
 <script>
 const COUNTRY_COLORS = {
-  JP: '#58a6ff', US: '#3fb950', CN: '#f85149', DE: '#d29922', GB: '#bc8cff'
+  JP: '#00cfff', US: '#00ff88', CN: '#ff4444', DE: '#ffcc00', GB: '#dd88ff'
 };
 const COUNTRY_NAMES = { JP:'日本', US:'アメリカ', CN:'中国', DE:'ドイツ', GB:'イギリス' };
 
@@ -224,9 +233,9 @@ updateClock();
 // Tab switching
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','country'][i] === tab);
+    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','trade','country'][i] === tab);
   });
-  ['overview','gdp','inflation','unemployment','country'].forEach(id => {
+  ['overview','gdp','inflation','unemployment','trade','country'].forEach(id => {
     document.getElementById(id + '-panel').style.display = id === tab ? '' : 'none';
   });
   if (tab !== 'overview' && indicatorData) renderBigChart(tab);
@@ -260,7 +269,7 @@ async function loadSummary() {
     const grid = document.getElementById('summary-cards');
     grid.innerHTML = '';
 
-    const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct'];
+    const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct', 'trade_balance'];
     for (const key of indicatorKeys) {
       for (const [code, cdata] of Object.entries(data)) {
         if (!cdata[key]) continue;
@@ -291,6 +300,7 @@ async function loadIndicators() {
   drawMultiChart('chart-inf',    countries, 'inflation');
   drawMultiChart('chart-unemp',  countries, 'unemployment');
   drawMultiChart('chart-ca',     countries, 'current_acct');
+  drawMultiChart('chart-trade',  countries, 'trade_balance');
 
   buildCountryTabs();
 }
@@ -308,8 +318,9 @@ function buildDatasets(countries, key) {
       data: labels.map(y => map[y] ?? null),
       borderColor: COUNTRY_COLORS[code] ?? '#888',
       backgroundColor: (COUNTRY_COLORS[code] ?? '#888') + '20',
+      borderWidth: 2.5,
       tension: 0.3, fill: false,
-      pointRadius: 3, pointHoverRadius: 6,
+      pointRadius: 4, pointHoverRadius: 7,
       spanGaps: true,
     };
   });
@@ -345,16 +356,27 @@ function drawMultiChart(canvasId, countries, key) {
 }
 
 function renderBigChart(tab) {
-  const keyMap = { gdp: 'gdp_growth', inflation: 'inflation', unemployment: 'unemployment' };
+  const keyMap = { gdp: 'gdp_growth', inflation: 'inflation', unemployment: 'unemployment', trade: 'trade_balance' };
   const key = keyMap[tab];
   if (!key || !indicatorData) return;
-  const canvasId = `chart-${tab}-big`;
+  const canvasMap = { gdp: 'chart-gdp-big', inflation: 'chart-inf-big', unemployment: 'chart-unemp-big', trade: 'chart-trade-big' };
+  const canvasId = canvasMap[tab];
   const ctx = document.getElementById(canvasId).getContext('2d');
   if (charts[canvasId]) charts[canvasId].destroy();
   const { labels, datasets } = buildDatasets(indicatorData.countries, key);
+  const brightColors = ['#00d4ff', '#00ff99', '#ff3333', '#ffdd00', '#ee77ff'];
   charts[canvasId] = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: datasets.map(d => ({ ...d, fill: false })) },
+    data: {
+      labels,
+      datasets: datasets.map((d, i) => ({
+        ...d,
+        fill: false,
+        backgroundColor: brightColors[i] ?? d.borderColor,
+        borderColor: brightColors[i] ?? d.borderColor,
+        borderWidth: 1,
+      }))
+    },
     options: {
       ...chartOptions(),
       scales: {
@@ -406,13 +428,18 @@ function showCountry(code) {
         <h3>⚖️ 経常収支 (GDP比%)</h3>
         <div class="detail-chart-wrap"><canvas id="dc-ca"></canvas></div>
       </div>
+      <div class="detail-chart-card">
+        <h3>🚢 貿易収支 (GDP比%)</h3>
+        <div class="detail-chart-wrap"><canvas id="dc-trade"></canvas></div>
+      </div>
     </div>`;
 
   const color = COUNTRY_COLORS[code] ?? '#58a6ff';
-  drawSingleCountry('dc-gdp',   cdata.gdp_growth,   color);
-  drawSingleCountry('dc-inf',   cdata.inflation,     color);
-  drawSingleCountry('dc-unemp', cdata.unemployment,  color);
-  drawSingleCountry('dc-ca',    cdata.current_acct,  color);
+  drawSingleCountry('dc-gdp',   cdata.gdp_growth,    color);
+  drawSingleCountry('dc-inf',   cdata.inflation,      color);
+  drawSingleCountry('dc-unemp', cdata.unemployment,   color);
+  drawSingleCountry('dc-ca',    cdata.current_acct,   color);
+  drawSingleCountry('dc-trade', cdata.trade_balance,  color);
 }
 
 function drawSingleCountry(canvasId, rows, color) {
