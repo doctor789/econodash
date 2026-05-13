@@ -146,6 +146,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <button class="tab" onclick="switchTab('inflation')">インフレ率</button>
     <button class="tab" onclick="switchTab('unemployment')">失業率</button>
     <button class="tab" onclick="switchTab('trade')">貿易収支</button>
+    <button class="tab" onclick="switchTab('markets')">金融市場</button>
     <button class="tab" onclick="switchTab('country')">国別詳細</button>
   </div>
 
@@ -204,6 +205,33 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-trade-big"></canvas></div></div>
   </div>
 
+  <!-- Markets panel -->
+  <div id="markets-panel" style="display:none">
+    <p class="section-title">株式インデックス（現在値）</p>
+    <div id="stock-cards" class="cards-grid">
+      <div class="loading"><div class="spinner"></div>データ取得中...</div>
+    </div>
+    <p class="section-title" style="margin-top:8px">株価指数 推移（1年）</p>
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-wrap" style="height:320px"><canvas id="chart-stocks"></canvas></div>
+    </div>
+    <p class="section-title">米国債利回り（現在値）</p>
+    <div id="bond-cards" class="cards-grid">
+      <div class="loading"><div class="spinner"></div>データ取得中...</div>
+    </div>
+    <p class="section-title" style="margin-top:8px">政策金利・貸出金利 推移</p>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>🏦 貸出金利 (%)</h3>
+        <div class="chart-wrap"><canvas id="chart-lending"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>💰 預金金利 (%)</h3>
+        <div class="chart-wrap"><canvas id="chart-deposit"></canvas></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Country detail panel -->
   <div id="country-panel">
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap" id="country-tabs"></div>
@@ -233,12 +261,14 @@ updateClock();
 // Tab switching
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','trade','country'][i] === tab);
+    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','trade','markets','country'][i] === tab);
   });
-  ['overview','gdp','inflation','unemployment','trade','country'].forEach(id => {
-    document.getElementById(id + '-panel').style.display = id === tab ? '' : 'none';
+  ['overview','gdp','inflation','unemployment','trade','markets','country'].forEach(id => {
+    document.getElementById(id + '-panel').style.display = id === tab ? 'block' : 'none';
   });
-  if (tab !== 'overview' && indicatorData) renderBigChart(tab);
+  if (tab === 'country' && indicatorData) showCountry(activeCountry);
+  else if (tab === 'markets') loadMarkets();
+  else if (tab !== 'overview' && indicatorData) renderBigChart(tab);
 }
 
 // Exchange rates
@@ -475,6 +505,99 @@ function drawSingleCountry(canvasId, rows, color) {
     }
   });
 }
+
+// Markets
+let marketsLoaded = false;
+async function loadMarkets() {
+  if (marketsLoaded) return;
+  try {
+    const res = await fetch('/api/markets');
+    const data = await res.json();
+
+    // 株カード
+    const stockCards = document.getElementById('stock-cards');
+    stockCards.innerHTML = '';
+    const countryColors = { JP:'#00cfff', US:'#00ff88', CN:'#ff4444', DE:'#ffcc00', GB:'#dd88ff' };
+    for (const [tk, d] of Object.entries(data.stocks)) {
+      const cls = d.change_pct >= 0 ? 'pos' : 'neg';
+      const sign = d.change_pct >= 0 ? '+' : '';
+      const color = countryColors[d.country] ?? '#aaa';
+      stockCards.innerHTML += `
+        <div class="card" style="border-left:3px solid ${color}">
+          <span class="card-label">${d.name}</span>
+          <span class="card-country" style="color:${color}">${COUNTRY_NAMES[d.country] ?? d.country}</span>
+          <span class="card-value ${cls}">${d.current.toLocaleString()}</span>
+          <span class="card-year ${cls}">${sign}${d.change_pct}%（前日比）</span>
+        </div>`;
+    }
+
+    // 株価チャート（1年）
+    const allDates = new Set();
+    Object.values(data.stocks).forEach(d => d.history.forEach(([dt]) => allDates.add(dt)));
+    const labels = [...allDates].sort();
+    const stockDatasets = Object.entries(data.stocks).map(([tk, d], i) => {
+      const colors = ['#00cfff','#00ff88','#ff4444','#ffcc00','#dd88ff'];
+      const map = Object.fromEntries(d.history);
+      const vals = labels.map(dt => map[dt] ?? null);
+      const base = vals.find(v => v !== null) ?? 1;
+      return {
+        label: d.name,
+        data: vals.map(v => v !== null ? round2(((v - base) / base) * 100) : null),
+        borderColor: colors[i], backgroundColor: colors[i]+'20',
+        borderWidth: 2, tension: 0.2, fill: false,
+        pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
+      };
+    });
+    const sCtx = document.getElementById('chart-stocks').getContext('2d');
+    if (charts['chart-stocks']) charts['chart-stocks'].destroy();
+    charts['chart-stocks'] = new Chart(sCtx, {
+      type: 'line',
+      data: { labels, datasets: stockDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8b949e', boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+            titleColor: '#e6edf3', bodyColor: '#8b949e',
+            callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}%` }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8b949e', maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#21262d' } },
+          y: { ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' },
+               title: { display: true, text: '1年前比(%)', color: '#8b949e', font: { size: 10 } } }
+        }
+      }
+    });
+
+    // 米国債カード
+    const bondCards = document.getElementById('bond-cards');
+    bondCards.innerHTML = '';
+    for (const [tk, d] of Object.entries(data.bonds)) {
+      const cls = d.change_pct >= 0 ? 'neg' : 'pos';
+      const sign = d.change_pct >= 0 ? '+' : '';
+      bondCards.innerHTML += `
+        <div class="card">
+          <span class="card-label">${d.name}</span>
+          <span class="card-value" style="color:#00ff88">${d.current}%</span>
+          <span class="card-year ${cls}">${sign}${d.change_pct}%（前日比）</span>
+        </div>`;
+    }
+
+    // 貸出・預金金利チャート
+    if (indicatorData) {
+      drawMultiChart('chart-lending', indicatorData.countries, 'lending_rate');
+      drawMultiChart('chart-deposit', indicatorData.countries, 'deposit_rate');
+    }
+
+    marketsLoaded = true;
+  } catch(e) {
+    document.getElementById('stock-cards').innerHTML = '<span style="color:var(--red)">データ取得失敗: ' + e.message + '</span>';
+  }
+}
+
+function round2(v) { return Math.round(v * 100) / 100; }
 
 // Boot
 (async () => {

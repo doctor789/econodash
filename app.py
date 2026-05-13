@@ -4,20 +4,17 @@ import sqlite3
 import json
 import time
 import concurrent.futures
-from datetime import datetime, timedelta
 from pathlib import Path
+import yfinance as yf
 
 app = Flask(__name__)
 
 DB_PATH = Path(__file__).parent / 'cache.db'
-CACHE_TTL = 60 * 60 * 24  # 24時間
+CACHE_TTL       = 60 * 60 * 24   # 経済指標: 24時間
+STOCK_CACHE_TTL = 60 * 60        # 株・金利: 1時間
 
 COUNTRIES = {
-    'JP': '日本',
-    'US': 'アメリカ',
-    'CN': '中国',
-    'DE': 'ドイツ',
-    'GB': 'イギリス',
+    'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
 }
 
 INDICATORS = {
@@ -26,9 +23,26 @@ INDICATORS = {
     'unemployment':  ('SL.UEM.TOTL.ZS',    '失業率'),
     'current_acct':  ('BN.CAB.XOKA.GD.ZS', '経常収支(GDP比%)'),
     'trade_balance': ('NE.RSB.GNFS.ZS',    '貿易収支(GDP比%)'),
+    'lending_rate':  ('FR.INR.LEND',        '貸出金利'),
+    'deposit_rate':  ('FR.INR.DPST',        '預金金利'),
 }
 
-# ---------- DB 初期化 ----------
+STOCK_INDICES = {
+    '^N225':    {'name': '日経225',    'country': 'JP'},
+    '^GSPC':    {'name': 'S&P500',    'country': 'US'},
+    '^GDAXI':   {'name': 'DAX',       'country': 'DE'},
+    '^FTSE':    {'name': 'FTSE100',   'country': 'GB'},
+    '000001.SS':{'name': '上海総合',  'country': 'CN'},
+}
+
+BOND_TICKERS = {
+    '^TNX':   {'name': '米国10年債利回り', 'country': 'US'},
+    '^FVX':   {'name': '米国5年債利回り',  'country': 'US'},
+    '^TYX':   {'name': '米国30年債利回り', 'country': 'US'},
+    '^IRX':   {'name': '米国3ヶ月TB',     'country': 'US'},
+}
+
+# ---------- DB ----------
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -37,33 +51,22 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS indicator_cache (
-                country     TEXT NOT NULL,
-                key         TEXT NOT NULL,
-                data        TEXT NOT NULL,
-                updated_at  REAL NOT NULL,
-                PRIMARY KEY (country, key)
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS exchange_cache (
-                id          INTEGER PRIMARY KEY,
-                data        TEXT NOT NULL,
-                updated_at  REAL NOT NULL
-            )
-        ''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS indicator_cache (
+            country TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL,
+            updated_at REAL NOT NULL, PRIMARY KEY (country, key))''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS exchange_cache (
+            id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS stock_cache (
+            ticker TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
 
-def is_fresh(updated_at):
-    return (time.time() - updated_at) < CACHE_TTL
+def is_fresh(updated_at, ttl=CACHE_TTL):
+    return (time.time() - updated_at) < ttl
 
-# ---------- World Bank API ----------
+# ---------- World Bank ----------
 
 def wb_fetch(country, indicator_code, years=12):
-    url = (
-        f'https://api.worldbank.org/v2/country/{country}'
-        f'/indicator/{indicator_code}?format=json&mrv={years}&per_page=100'
-    )
+    url = (f'https://api.worldbank.org/v2/country/{country}'
+           f'/indicator/{indicator_code}?format=json&mrv={years}&per_page=100')
     try:
         r = requests.get(url, timeout=12)
         r.raise_for_status()
@@ -79,24 +82,20 @@ def wb_fetch(country, indicator_code, years=12):
 def fetch_and_cache_indicator(country, key, ind_code):
     data = wb_fetch(country, ind_code)
     with get_db() as conn:
-        conn.execute(
-            'INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
-            (country, key, json.dumps(data), time.time())
-        )
+        conn.execute('INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
+                     (country, key, json.dumps(data), time.time()))
     return data
 
 def get_indicator(country, key):
     ind_code = INDICATORS[key][0]
     with get_db() as conn:
-        row = conn.execute(
-            'SELECT data, updated_at FROM indicator_cache WHERE country=? AND key=?',
-            (country, key)
-        ).fetchone()
+        row = conn.execute('SELECT data, updated_at FROM indicator_cache WHERE country=? AND key=?',
+                           (country, key)).fetchone()
     if row and is_fresh(row['updated_at']):
         return json.loads(row['data'])
     return fetch_and_cache_indicator(country, key, ind_code)
 
-# ---------- 為替レート ----------
+# ---------- 為替 ----------
 
 def fetch_and_cache_exchange():
     try:
@@ -105,21 +104,16 @@ def fetch_and_cache_exchange():
         data = r.json()
         targets = ['JPY', 'EUR', 'CNY', 'GBP', 'AUD', 'KRW', 'CHF', 'CAD']
         rates = {c: round(data['rates'][c], 4) for c in targets if c in data['rates']}
-        result = {'base': 'USD', 'rates': rates,
-                  'updated': data.get('time_last_update_utc', '')}
+        result = {'base': 'USD', 'rates': rates, 'updated': data.get('time_last_update_utc', '')}
     except Exception:
-        result = {
-            'base': 'USD',
-            'rates': {'JPY': 149.5, 'EUR': 0.92, 'CNY': 7.24,
-                      'GBP': 0.79, 'AUD': 1.53, 'KRW': 1325.0,
-                      'CHF': 0.89, 'CAD': 1.36},
-            'updated': 'N/A (フォールバックデータ)'
-        }
+        result = {'base': 'USD',
+                  'rates': {'JPY': 149.5, 'EUR': 0.92, 'CNY': 7.24,
+                            'GBP': 0.79, 'AUD': 1.53, 'KRW': 1325.0,
+                            'CHF': 0.89, 'CAD': 1.36},
+                  'updated': 'N/A'}
     with get_db() as conn:
-        conn.execute(
-            'INSERT OR REPLACE INTO exchange_cache (id, data, updated_at) VALUES (1,?,?)',
-            (json.dumps(result), time.time())
-        )
+        conn.execute('INSERT OR REPLACE INTO exchange_cache (id,data,updated_at) VALUES (1,?,?)',
+                     (json.dumps(result), time.time()))
     return result
 
 def get_exchange():
@@ -129,36 +123,75 @@ def get_exchange():
         return json.loads(row['data'])
     return fetch_and_cache_exchange()
 
+# ---------- 株・金利 (yfinance) ----------
+
+def fetch_yf(ticker):
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period='1y')
+        if hist.empty:
+            return None
+        fi = t.fast_info
+        current   = round(float(fi.last_price), 2)
+        prev      = round(float(fi.previous_close), 2)
+        change_p  = round((current - prev) / prev * 100, 2) if prev else 0
+        history   = [(str(d.date()), round(float(v), 2))
+                     for d, v in zip(hist.index, hist['Close'])]
+        return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history}
+    except Exception:
+        return None
+
+def fetch_and_cache_stock(ticker):
+    data = fetch_yf(ticker)
+    if data:
+        with get_db() as conn:
+            conn.execute('INSERT OR REPLACE INTO stock_cache VALUES (?,?,?)',
+                         (ticker, json.dumps(data), time.time()))
+    return data
+
+def get_stock(ticker):
+    with get_db() as conn:
+        row = conn.execute('SELECT data, updated_at FROM stock_cache WHERE ticker=?',
+                           (ticker,)).fetchone()
+    if row and is_fresh(row['updated_at'], STOCK_CACHE_TTL):
+        return json.loads(row['data'])
+    return fetch_and_cache_stock(ticker)
+
 # ---------- 起動時プリフェッチ ----------
 
 def prefetch_all():
-    print('DBキャッシュを確認中...')
-    tasks = []
+    print('DBキャッシュ確認中...')
+    tasks_ind, tasks_stk = [], []
     with get_db() as conn:
         for country in COUNTRIES:
             for key, (ind_code, _) in INDICATORS.items():
-                row = conn.execute(
-                    'SELECT updated_at FROM indicator_cache WHERE country=? AND key=?',
-                    (country, key)
-                ).fetchone()
+                row = conn.execute('SELECT updated_at FROM indicator_cache WHERE country=? AND key=?',
+                                   (country, key)).fetchone()
                 if not row or not is_fresh(row['updated_at']):
-                    tasks.append((country, key, ind_code))
+                    tasks_ind.append((country, key, ind_code))
+        for ticker in {**STOCK_INDICES, **BOND_TICKERS}:
+            row = conn.execute('SELECT updated_at FROM stock_cache WHERE ticker=?',
+                               (ticker,)).fetchone()
+            if not row or not is_fresh(row['updated_at'], STOCK_CACHE_TTL):
+                tasks_stk.append(ticker)
+        ex_row = conn.execute('SELECT updated_at FROM exchange_cache WHERE id=1').fetchone()
+        need_ex = not ex_row or not is_fresh(ex_row['updated_at'])
 
-        row = conn.execute('SELECT updated_at FROM exchange_cache WHERE id=1').fetchone()
-        need_exchange = not row or not is_fresh(row['updated_at'])
-
-    if tasks or need_exchange:
-        print(f'APIから取得中... ({len(tasks)}件の指標)')
+    total = len(tasks_ind) + len(tasks_stk) + (1 if need_ex else 0)
+    if total:
+        print(f'APIから取得中... (経済指標{len(tasks_ind)}件, 株/金利{len(tasks_stk)}件)')
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-            for country, key, ind_code in tasks:
-                ex.submit(fetch_and_cache_indicator, country, key, ind_code)
-            if need_exchange:
+            for c, k, ic in tasks_ind:
+                ex.submit(fetch_and_cache_indicator, c, k, ic)
+            for tk in tasks_stk:
+                ex.submit(fetch_and_cache_stock, tk)
+            if need_ex:
                 ex.submit(fetch_and_cache_exchange)
         print('キャッシュ完了！')
     else:
-        print('キャッシュ有効。DBから即時提供します。')
+        print('キャッシュ有効。即時提供します。')
 
-# ---------- Flask ルート ----------
+# ---------- Flask ----------
 
 @app.route('/')
 def index():
@@ -168,15 +201,12 @@ def index():
 def api_indicators():
     all_data = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        futures = {}
-        for code in COUNTRIES:
-            for key in INDICATORS:
-                futures[(code, key)] = ex.submit(get_indicator, code, key)
-        for (code, key), fut in futures.items():
-            all_data.setdefault(code, {'name': COUNTRIES[code]})
-            all_data[code][key] = fut.result()
-
-    labels = {key: label for key, (_, label) in INDICATORS.items()}
+        futures = {(c, k): ex.submit(get_indicator, c, k)
+                   for c in COUNTRIES for k in INDICATORS}
+        for (c, k), fut in futures.items():
+            all_data.setdefault(c, {'name': COUNTRIES[c]})
+            all_data[c][k] = fut.result()
+    labels = {k: v[1] for k, v in INDICATORS.items()}
     return jsonify({'countries': all_data, 'labels': labels})
 
 @app.route('/api/exchange')
@@ -187,34 +217,43 @@ def api_exchange():
 def api_summary():
     summary = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        futures = {}
-        for code in COUNTRIES:
-            for key in INDICATORS:
-                futures[(code, key)] = ex.submit(get_indicator, code, key)
-        for (code, key), fut in futures.items():
+        futures = {(c, k): ex.submit(get_indicator, c, k)
+                   for c in COUNTRIES for k in INDICATORS}
+        for (c, k), fut in futures.items():
             rows = fut.result()
             if rows:
                 year, value = rows[-1]
-                summary.setdefault(code, {'name': COUNTRIES[code]})
-                summary[code][key] = {'value': value, 'year': year,
-                                      'label': INDICATORS[key][1]}
+                summary.setdefault(c, {'name': COUNTRIES[c]})
+                summary[c][k] = {'value': value, 'year': year, 'label': INDICATORS[k][1]}
     return jsonify(summary)
+
+@app.route('/api/markets')
+def api_markets():
+    result = {'stocks': {}, 'bonds': {}}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        stock_futs = {tk: ex.submit(get_stock, tk) for tk in STOCK_INDICES}
+        bond_futs  = {tk: ex.submit(get_stock, tk) for tk in BOND_TICKERS}
+        for tk, fut in stock_futs.items():
+            d = fut.result()
+            if d:
+                result['stocks'][tk] = {**d, **STOCK_INDICES[tk]}
+        for tk, fut in bond_futs.items():
+            d = fut.result()
+            if d:
+                result['bonds'][tk] = {**d, **BOND_TICKERS[tk]}
+    return jsonify(result)
 
 @app.route('/api/cache-status')
 def cache_status():
     with get_db() as conn:
         rows = conn.execute('SELECT country, key, updated_at FROM indicator_cache').fetchall()
         ex_row = conn.execute('SELECT updated_at FROM exchange_cache WHERE id=1').fetchone()
-    result = []
-    for r in rows:
-        age = int((time.time() - r['updated_at']) / 60)
-        result.append({'country': r['country'], 'key': r['key'],
-                       'age_min': age, 'fresh': is_fresh(r['updated_at'])})
-    return jsonify({
-        'indicators': result,
-        'exchange': {'age_min': int((time.time() - ex_row['updated_at']) / 60),
-                     'fresh': is_fresh(ex_row['updated_at'])} if ex_row else None
-    })
+    result = [{'country': r['country'], 'key': r['key'],
+               'age_min': int((time.time()-r['updated_at'])/60),
+               'fresh': is_fresh(r['updated_at'])} for r in rows]
+    return jsonify({'indicators': result,
+                    'exchange': {'age_min': int((time.time()-ex_row['updated_at'])/60),
+                                 'fresh': is_fresh(ex_row['updated_at'])} if ex_row else None})
 
 if __name__ == '__main__':
     init_db()
