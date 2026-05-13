@@ -255,8 +255,15 @@ def cache_status():
                     'exchange': {'age_min': int((time.time()-ex_row['updated_at'])/60),
                                  'fresh': is_fresh(ex_row['updated_at'])} if ex_row else None})
 
+import threading
+
+def start_prefetch():
+    t = threading.Thread(target=prefetch_all, daemon=True)
+    t.start()
+
+init_db()
+start_prefetch()
+
 if __name__ == '__main__':
-    init_db()
-    prefetch_all()
     print('http://localhost:5050 でアクセスしてください')
     app.run(debug=False, port=5050, threaded=True)
