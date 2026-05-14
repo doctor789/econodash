@@ -305,19 +305,22 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
   </div>
 </main>
 
-<div id="debug-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#f85149;color:#fff;font-size:11px;padding:6px 10px;z-index:9999;word-break:break-all"></div>
+<div id="debug-bar" style="position:fixed;bottom:0;left:0;right:0;background:#1f6feb;color:#fff;font-size:11px;padding:6px 10px;z-index:9999;word-break:break-all">v4 起動中…</div>
 
 <script>
-window.onerror = function(msg, src, line) {
+const APP_VERSION = 'v4';
+function setDbg(msg, isErr) {
   const bar = document.getElementById('debug-bar');
-  bar.style.display = 'block';
-  bar.textContent = 'JS Error: ' + msg + ' (' + (src||'').split('/').pop() + ':' + line + ')';
+  bar.style.background = isErr ? '#f85149' : '#1f6feb';
+  bar.textContent = APP_VERSION + ' | ' + msg;
+}
+window.onerror = function(msg, src, line) {
+  setDbg('JS Err: ' + msg + ' (' + (src||'').split('/').pop() + ':' + line + ')', true);
 };
 window.addEventListener('unhandledrejection', function(e) {
-  const bar = document.getElementById('debug-bar');
-  bar.style.display = 'block';
-  bar.textContent = 'Promise Error: ' + (e.reason?.message || e.reason || 'unknown');
+  setDbg('Promise Err: ' + (e.reason?.message || e.reason || 'unknown'), true);
 });
+setDbg('スクリプト起動');
 
 const COUNTRY_COLORS = {
   JP: '#00cfff', US: '#00ff88', CN: '#ff4444', DE: '#ffcc00', GB: '#dd88ff'
@@ -785,16 +788,20 @@ function drawSingleRate(canvasId, rows, color) {
 let marketsLoaded = false;
 async function loadMarkets(retry = 0) {
   if (marketsLoaded) return;
+  setDbg('loadMarkets 開始 retry=' + retry);
   const stockCards = document.getElementById('stock-cards');
   try {
     if (retry > 0) {
       stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>データ準備中... (${retry}/4)</div>`;
     }
+    setDbg('fetch /api/markets...');
     const res = await fetch('/api/markets');
+    setDbg('fetch完了 status=' + res.status);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     marketsData = data;
     const stocks = data.stocks || {};
+    setDbg('株データ受信 ' + Object.keys(stocks).length + '銘柄');
     if (Object.keys(stocks).length === 0 && retry < 4) {
       stockCards.innerHTML = '<div class="loading"><div class="spinner"></div>株価データ準備中... しばらくお待ちください</div>';
       setTimeout(() => loadMarkets(retry + 1), 8000);
@@ -935,7 +942,9 @@ async function loadMarkets(retry = 0) {
     drawRateChart('chart-policy-rate', rateData.policy);
 
     marketsLoaded = true;
+    setDbg('描画完了 株' + Object.keys(stocks).length + '銘柄');
   } catch(e) {
+    setDbg('catch: ' + e.message + ' retry=' + retry, true);
     if (retry < 4) {
       stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>再試行中... (${retry + 1}/4)</div>`;
       setTimeout(() => loadMarkets(retry + 1), 8000);
