@@ -42,15 +42,22 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
   display: flex; gap: 4px; margin-bottom: 24px;
   background: var(--surface); padding: 4px;
   border-radius: 8px; border: 1px solid var(--border);
-  width: fit-content;
+  width: 100%; overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.tab-bar::-webkit-scrollbar { display: none; }
 .tab {
-  padding: 8px 20px; border-radius: 6px; cursor: pointer;
+  padding: 8px 16px; border-radius: 6px; cursor: pointer;
   font-size: 0.9rem; font-weight: 500; transition: all .15s;
   color: var(--muted); border: none; background: transparent;
+  white-space: nowrap; flex-shrink: 0;
 }
 .tab.active { background: var(--accent); color: #fff; }
 .tab:hover:not(.active) { background: var(--border); color: var(--text); }
+@media (max-width: 480px) {
+  .tab { padding: 7px 12px; font-size: 0.82rem; }
+}
 
 /* Exchange rate bar */
 #exchange-bar {
