@@ -273,12 +273,14 @@ def prefetch_all():
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
             for c, k, ic in tasks_ind:
                 ex.submit(fetch_and_cache_indicator, c, k, ic)
-            for tk in tasks_stk:
-                ex.submit(fetch_and_cache_stock, tk)
             for rt in tasks_oecd:
                 ex.submit(fetch_and_cache_rates, rt)
             if need_ex:
                 ex.submit(fetch_and_cache_exchange)
+        # Fetch stocks sequentially to avoid Yahoo Finance rate limiting
+        for tk in tasks_stk:
+            fetch_and_cache_stock(tk)
+            time.sleep(2)
         print('キャッシュ完了！')
     else:
         print('キャッシュ有効。即時提供します。')
