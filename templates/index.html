@@ -305,23 +305,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
   </div>
 </main>
 
-<div id="debug-bar" style="position:fixed;bottom:0;left:0;right:0;background:#1f6feb;color:#fff;font-size:11px;padding:6px 10px;z-index:9999;word-break:break-all">v4 起動中…</div>
-
 <script>
-const APP_VERSION = 'v4';
-function setDbg(msg, isErr) {
-  const bar = document.getElementById('debug-bar');
-  bar.style.background = isErr ? '#f85149' : '#1f6feb';
-  bar.textContent = APP_VERSION + ' | ' + msg;
-}
-window.onerror = function(msg, src, line) {
-  setDbg('JS Err: ' + msg + ' (' + (src||'').split('/').pop() + ':' + line + ')', true);
-};
-window.addEventListener('unhandledrejection', function(e) {
-  setDbg('Promise Err: ' + (e.reason?.message || e.reason || 'unknown'), true);
-});
-setDbg('スクリプト起動');
-
 const COUNTRY_COLORS = {
   JP: '#00cfff', US: '#00ff88', CN: '#ff4444', DE: '#ffcc00', GB: '#dd88ff'
 };
@@ -339,8 +323,8 @@ const COUNTRY_STOCK = { JP:'^N225', US:'^GSPC', DE:'^GDAXI', GB:'^FTSE', CN:'000
 const chartData = {};
 const chartPeriods = {};
 
-const ECON_PERIODS  = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[0,'MAX']];
-const RATES_PERIODS = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[0,'MAX']];
+const ECON_PERIODS  = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[30,'30Y'],[0,'MAX']];
+const RATES_PERIODS = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[30,'30Y'],[0,'MAX']];
 const STOCK_PERIODS = [[1,'1Y'],[3,'3Y'],[5,'5Y'],[10,'10Y'],[20,'20Y'],[30,'30Y'],[0,'MAX']];
 
 function initPeriodBtns(chartId, periods, defaultYears) {
@@ -373,19 +357,35 @@ function sliceIdx(labels, years) {
   return 0;
 }
 
+// 長期表示時にデータを間引いてチャートを軽くする
+function downsample(labels, valArrays, maxPoints) {
+  if (labels.length <= maxPoints) return { labels, valArrays };
+  const step = Math.ceil(labels.length / maxPoints);
+  const outLabels = [];
+  const outVals = valArrays.map(() => []);
+  for (let i = 0; i < labels.length; i += step) {
+    outLabels.push(labels[i]);
+    valArrays.forEach((vals, j) => outVals[j].push(vals[i]));
+  }
+  return { labels: outLabels, valArrays: outVals };
+}
+
 function updateChart(chartId) {
   const stored = chartData[chartId];
   if (!stored || !charts[chartId]) return;
   const si = sliceIdx(stored.labels, chartPeriods[chartId] ?? 0);
   const chart = charts[chartId];
-  chart.data.labels = stored.labels.slice(si);
   if (stored.isStocks) {
+    const slicedLabels = stored.labels.slice(si);
+    const slicedVals = stored.rawValues.map(v => v.slice(si));
+    const { labels: dsLabels, valArrays: dsVals } = downsample(slicedLabels, slicedVals, 1500);
+    chart.data.labels = dsLabels;
     chart.data.datasets.forEach((ds, i) => {
-      const raw = stored.rawValues[i].slice(si);
-      const base = raw.find(v => v !== null) ?? 1;
-      ds.data = raw.map(v => v !== null ? round2(((v - base) / base) * 100) : null);
+      const base = dsVals[i].find(v => v !== null) ?? 1;
+      ds.data = dsVals[i].map(v => v !== null ? round2(((v - base) / base) * 100) : null);
     });
   } else {
+    chart.data.labels = stored.labels.slice(si);
     chart.data.datasets.forEach((ds, i) => {
       if (stored.datasets[i]) ds.data = stored.datasets[i].data.slice(si);
     });
@@ -788,20 +788,20 @@ function drawSingleRate(canvasId, rows, color) {
 let marketsLoaded = false;
 async function loadMarkets(retry = 0) {
   if (marketsLoaded) return;
-  setDbg('loadMarkets 開始 retry=' + retry);
+
   const stockCards = document.getElementById('stock-cards');
   try {
     if (retry > 0) {
       stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>データ準備中... (${retry}/4)</div>`;
     }
-    setDbg('fetch /api/markets...');
+
     const res = await fetch('/api/markets');
-    setDbg('fetch完了 status=' + res.status);
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     marketsData = data;
     const stocks = data.stocks || {};
-    setDbg('株データ受信 ' + Object.keys(stocks).length + '銘柄');
+
     if (Object.keys(stocks).length === 0 && retry < 4) {
       stockCards.innerHTML = '<div class="loading"><div class="spinner"></div>株価データ準備中... しばらくお待ちください</div>';
       setTimeout(() => loadMarkets(retry + 1), 8000);
@@ -841,24 +841,30 @@ async function loadMarkets(retry = 0) {
     const ssi = sliceIdx(sLabels, chartPeriods['chart-stocks'] ?? 0);
 
     function buildStockDatasets(si) {
-      return rawValues.map((vals, i) => {
-        const sliced = vals.slice(si);
-        const base = sliced.find(v => v !== null) ?? 1;
-        return {
-          label: stockNames[i],
-          data: sliced.map(v => v !== null ? round2(((v - base) / base) * 100) : null),
-          borderColor: stockColors[i], backgroundColor: stockColors[i] + '20',
-          borderWidth: 2, tension: 0.2, fill: false,
-          pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
-        };
-      });
+      const slicedLabels = sLabels.slice(si);
+      const slicedVals = rawValues.map(v => v.slice(si));
+      const { labels: dsLabels, valArrays: dsVals } = downsample(slicedLabels, slicedVals, 1500);
+      return {
+        labels: dsLabels,
+        datasets: dsVals.map((vals, i) => {
+          const base = vals.find(v => v !== null) ?? 1;
+          return {
+            label: stockNames[i],
+            data: vals.map(v => v !== null ? round2(((v - base) / base) * 100) : null),
+            borderColor: stockColors[i], backgroundColor: stockColors[i] + '20',
+            borderWidth: 2, tension: 0.2, fill: false,
+            pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
+          };
+        })
+      };
     }
 
     const sCtx = document.getElementById('chart-stocks').getContext('2d');
     if (charts['chart-stocks']) charts['chart-stocks'].destroy();
+    const sDs = buildStockDatasets(ssi);
     charts['chart-stocks'] = new Chart(sCtx, {
       type: 'line',
-      data: { labels: sLabels.slice(ssi), datasets: buildStockDatasets(ssi) },
+      data: { labels: sDs.labels, datasets: sDs.datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -942,9 +948,9 @@ async function loadMarkets(retry = 0) {
     drawRateChart('chart-policy-rate', rateData.policy);
 
     marketsLoaded = true;
-    setDbg('描画完了 株' + Object.keys(stocks).length + '銘柄');
+
   } catch(e) {
-    setDbg('catch: ' + e.message + ' retry=' + retry, true);
+
     if (retry < 4) {
       stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>再試行中... (${retry + 1}/4)</div>`;
       setTimeout(() => loadMarkets(retry + 1), 8000);

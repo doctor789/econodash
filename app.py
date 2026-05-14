@@ -15,7 +15,7 @@ _yf_lock = threading.Lock()  # serialize all yfinance fetches to avoid rate limi
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
-DB_VERSION = '7'
+DB_VERSION = '8'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -140,7 +140,7 @@ def is_fresh(updated_at, ttl=CACHE_TTL):
 
 # ---------- World Bank ----------
 
-def wb_fetch(country, indicator_code, years=60):
+def wb_fetch(country, indicator_code, years=80):
     url = (f'https://api.worldbank.org/v2/country/{country}'
            f'/indicator/{indicator_code}?format=json&mrv={years}&per_page=100')
     try:
@@ -251,7 +251,7 @@ def get_stock(ticker):
 
 # ---------- FRED 10年国債・政策金利 ----------
 
-def fetch_fred(series_id, start_year=1960):
+def fetch_fred(series_id, start_year=1950):
     url = f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}'
     try:
         r = requests.get(url, timeout=15)
@@ -370,6 +370,12 @@ def api_summary():
                 summary[c][k] = {'value': value, 'year': year, 'label': INDICATORS[k][1]}
     return jsonify(summary)
 
+def thin_history(history, max_points=2000):
+    if len(history) <= max_points:
+        return history
+    step = len(history) // max_points
+    return history[::step]
+
 @app.route('/api/markets')
 def api_markets():
     result = {'stocks': {}, 'bonds': {}}
@@ -379,11 +385,15 @@ def api_markets():
         for tk, fut in sf.items():
             d = fut.result()
             if d:
-                result['stocks'][tk] = {**d, **STOCK_INDICES[tk]}
+                entry = {**d, **STOCK_INDICES[tk]}
+                entry['history'] = thin_history(entry.get('history', []))
+                result['stocks'][tk] = entry
         for tk, fut in bf.items():
             d = fut.result()
             if d:
-                result['bonds'][tk] = {**d, **BOND_TICKERS[tk]}
+                entry = {**d, **BOND_TICKERS[tk]}
+                entry['history'] = thin_history(entry.get('history', []))
+                result['bonds'][tk] = entry
     return jsonify(result)
 
 @app.route('/api/interest_rates')
@@ -393,9 +403,9 @@ def api_interest_rates():
         f_policy = ex.submit(get_rates, 'policy')
     country_names = {'JP': '日本', 'US': 'アメリカ', 'DE': 'ドイツ', 'GB': 'イギリス'}
     return jsonify({
-        'bond10yr': {k: {'data': v, 'name': country_names.get(k, k)}
+        'bond10yr': {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
                      for k, v in f_bond.result().items()},
-        'policy':   {k: {'data': v, 'name': country_names.get(k, k)}
+        'policy':   {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
                      for k, v in f_policy.result().items()},
     })
 
