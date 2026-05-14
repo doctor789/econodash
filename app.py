@@ -15,7 +15,7 @@ _yf_lock = threading.Lock()  # serialize all yfinance fetches to avoid rate limi
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
-DB_VERSION = '6'
+DB_VERSION = '7'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
