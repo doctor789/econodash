@@ -10,10 +10,12 @@ import yfinance as yf
 
 app = Flask(__name__)
 
+_yf_lock = threading.Lock()  # serialize all yfinance fetches to avoid rate limiting
+
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
-DB_VERSION = '5'
+DB_VERSION = '6'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -161,31 +163,35 @@ def get_exchange():
 # ---------- 株・米国債 (yfinance) ----------
 
 def fetch_yf(ticker):
-    try:
-        t = yf.Ticker(ticker)
-        hist = t.history(period='max')
-        if hist.empty:
-            print(f'yfinance {ticker}: history empty')
-            return None
-        fi = t.fast_info
-        current  = round(float(fi.last_price), 2)
-        prev     = round(float(fi.previous_close), 2)
-        change_p = round((current - prev) / prev * 100, 2) if prev else 0
-        history  = [(str(d.date()), round(float(v), 2))
-                    for d, v in zip(hist.index, hist['Close'])]
-        per = None
+    with _yf_lock:
         try:
-            pe_ticker = STOCK_PE_PROXY.get(ticker, ticker)
-            pe_src = yf.Ticker(pe_ticker) if pe_ticker != ticker else t
-            per_raw = pe_src.info.get('trailingPE')
-            if per_raw and per_raw == per_raw:  # not NaN
-                per = round(float(per_raw), 1)
-        except Exception:
-            pass
-        return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history, 'per': per}
-    except Exception as e:
-        print(f'yfinance {ticker} error: {e}')
-        return None
+            t = yf.Ticker(ticker)
+            hist = t.history(period='max')
+            if hist.empty:
+                print(f'yfinance {ticker}: history empty')
+                time.sleep(1.5)
+                return None
+            fi = t.fast_info
+            current  = round(float(fi.last_price), 2)
+            prev     = round(float(fi.previous_close), 2)
+            change_p = round((current - prev) / prev * 100, 2) if prev else 0
+            history  = [(str(d.date()), round(float(v), 2))
+                        for d, v in zip(hist.index, hist['Close'])]
+            per = None
+            try:
+                pe_ticker = STOCK_PE_PROXY.get(ticker, ticker)
+                pe_src = yf.Ticker(pe_ticker) if pe_ticker != ticker else t
+                per_raw = pe_src.info.get('trailingPE')
+                if per_raw and per_raw == per_raw:  # not NaN
+                    per = round(float(per_raw), 1)
+            except Exception:
+                pass
+            time.sleep(1.5)
+            return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history, 'per': per}
+        except Exception as e:
+            print(f'yfinance {ticker} error: {e}')
+            time.sleep(1.5)
+            return None
 
 def fetch_and_cache_stock(ticker):
     data = fetch_yf(ticker)

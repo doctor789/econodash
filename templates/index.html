@@ -770,18 +770,28 @@ function drawSingleRate(canvasId, rows, color) {
 // ---------- Markets ----------
 
 let marketsLoaded = false;
-async function loadMarkets() {
+async function loadMarkets(retry = 0) {
   if (marketsLoaded) return;
+  const stockCards = document.getElementById('stock-cards');
   try {
+    if (retry > 0) {
+      stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>データ準備中... (${retry}/4)</div>`;
+    }
     const res = await fetch('/api/markets');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     marketsData = data;
+    const stocks = data.stocks || {};
+    if (Object.keys(stocks).length === 0 && retry < 4) {
+      stockCards.innerHTML = '<div class="loading"><div class="spinner"></div>株価データ準備中... しばらくお待ちください</div>';
+      setTimeout(() => loadMarkets(retry + 1), 8000);
+      return;
+    }
 
     // 株カード
-    const stockCards = document.getElementById('stock-cards');
     stockCards.innerHTML = '';
     const countryColors = { JP:'#00cfff', US:'#00ff88', CN:'#ff4444', DE:'#ffcc00', GB:'#dd88ff' };
-    for (const [tk, d] of Object.entries(data.stocks)) {
+    for (const [tk, d] of Object.entries(stocks)) {
       const cls = d.change_pct >= 0 ? 'pos' : 'neg';
       const sign = d.change_pct >= 0 ? '+' : '';
       const color = countryColors[d.country] ?? '#aaa';
@@ -797,13 +807,13 @@ async function loadMarkets() {
 
     // 株価チャート
     const allDates = new Set();
-    Object.values(data.stocks).forEach(d => d.history.forEach(([dt]) => allDates.add(dt)));
+    Object.values(stocks).forEach(d => d.history.forEach(([dt]) => allDates.add(dt)));
     const sLabels = [...allDates].sort();
-    const rawValues = Object.entries(data.stocks).map(([, d]) => {
+    const rawValues = Object.entries(stocks).map(([, d]) => {
       const map = Object.fromEntries(d.history);
       return sLabels.map(dt => map[dt] ?? null);
     });
-    const stockNames  = Object.values(data.stocks).map(d => d.name);
+    const stockNames  = Object.values(stocks).map(d => d.name);
     const stockColors = ['#00cfff','#00ff88','#ff4444','#ffcc00','#dd88ff'];
 
     chartData['chart-stocks'] = { labels: sLabels, rawValues, isStocks: true };
@@ -850,7 +860,7 @@ async function loadMarkets() {
     // 米国債カード
     const bondCards = document.getElementById('bond-cards');
     bondCards.innerHTML = '';
-    for (const [, d] of Object.entries(data.bonds)) {
+    for (const [, d] of Object.entries(data.bonds || {})) {
       const cls = d.change_pct >= 0 ? 'neg' : 'pos';
       const sign = d.change_pct >= 0 ? '+' : '';
       bondCards.innerHTML += `
@@ -913,7 +923,12 @@ async function loadMarkets() {
 
     marketsLoaded = true;
   } catch(e) {
-    document.getElementById('stock-cards').innerHTML = '<span style="color:var(--red)">データ取得失敗: ' + e.message + '</span>';
+    if (retry < 4) {
+      stockCards.innerHTML = `<div class="loading"><div class="spinner"></div>再試行中... (${retry + 1}/4)</div>`;
+      setTimeout(() => loadMarkets(retry + 1), 8000);
+    } else {
+      stockCards.innerHTML = '<span style="color:var(--red)">データ取得失敗: ' + e.message + '</span>';
+    }
   }
 }
 
