@@ -165,6 +165,7 @@ def fetch_yf(ticker):
         t = yf.Ticker(ticker)
         hist = t.history(period='max')
         if hist.empty:
+            print(f'yfinance {ticker}: history empty')
             return None
         fi = t.fast_info
         current  = round(float(fi.last_price), 2)
@@ -182,7 +183,8 @@ def fetch_yf(ticker):
         except Exception:
             pass
         return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history, 'per': per}
-    except Exception:
+    except Exception as e:
+        print(f'yfinance {ticker} error: {e}')
         return None
 
 def fetch_and_cache_stock(ticker):
