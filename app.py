@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, make_response
 import requests
 import sqlite3
 import json
@@ -335,7 +335,10 @@ def prefetch_all():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    resp = make_response(render_template('index.html'))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 @app.route('/api/indicators')
 def api_indicators():
@@ -394,6 +397,18 @@ def api_interest_rates():
                      for k, v in f_bond.result().items()},
         'policy':   {k: {'data': v, 'name': country_names.get(k, k)}
                      for k, v in f_policy.result().items()},
+    })
+
+@app.route('/api/debug')
+def api_debug():
+    with get_db() as conn:
+        stocks = {r[0]: r[1] for r in conn.execute('SELECT ticker, updated_at FROM stock_cache')}
+    import time as _t
+    now = _t.time()
+    return jsonify({
+        'stocks_cached': {tk: {'age_min': round((now - ts) / 60, 1)} for tk, ts in stocks.items()},
+        'stock_count': len(stocks),
+        'seed_exists': SEED_PATH.exists(),
     })
 
 def start_prefetch():

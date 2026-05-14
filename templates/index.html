@@ -305,7 +305,20 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
   </div>
 </main>
 
+<div id="debug-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#f85149;color:#fff;font-size:11px;padding:6px 10px;z-index:9999;word-break:break-all"></div>
+
 <script>
+window.onerror = function(msg, src, line) {
+  const bar = document.getElementById('debug-bar');
+  bar.style.display = 'block';
+  bar.textContent = 'JS Error: ' + msg + ' (' + (src||'').split('/').pop() + ':' + line + ')';
+};
+window.addEventListener('unhandledrejection', function(e) {
+  const bar = document.getElementById('debug-bar');
+  bar.style.display = 'block';
+  bar.textContent = 'Promise Error: ' + (e.reason?.message || e.reason || 'unknown');
+});
+
 const COUNTRY_COLORS = {
   JP: '#00cfff', US: '#00ff88', CN: '#ff4444', DE: '#ffcc00', GB: '#dd88ff'
 };
