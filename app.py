@@ -95,6 +95,46 @@ def init_db():
             conn.execute('DELETE FROM oecd_cache')
             conn.execute("INSERT OR REPLACE INTO _meta VALUES ('db_version', ?)", (DB_VERSION,))
 
+SEED_PATH = Path(__file__).parent / 'seed_data.json'
+
+def load_seed_data():
+    if not SEED_PATH.exists():
+        return
+    try:
+        with open(SEED_PATH, encoding='utf-8') as f:
+            seed = json.load(f)
+    except Exception as e:
+        print(f'シードデータ読み込みエラー: {e}')
+        return
+    now = time.time()
+    loaded = 0
+    with get_db() as conn:
+        for ticker, data in seed.get('stocks', {}).items():
+            if not conn.execute('SELECT 1 FROM stock_cache WHERE ticker=?', (ticker,)).fetchone():
+                conn.execute('INSERT OR IGNORE INTO stock_cache VALUES (?,?,?)',
+                             (ticker, json.dumps(data), now))
+                loaded += 1
+        for country, inds in seed.get('indicators', {}).items():
+            for key, data in inds.items():
+                if not conn.execute('SELECT 1 FROM indicator_cache WHERE country=? AND key=?',
+                                    (country, key)).fetchone():
+                    conn.execute('INSERT OR IGNORE INTO indicator_cache VALUES (?,?,?,?)',
+                                 (country, key, json.dumps(data), now))
+                    loaded += 1
+        if seed.get('exchange'):
+            if not conn.execute('SELECT 1 FROM exchange_cache WHERE id=1').fetchone():
+                conn.execute('INSERT OR IGNORE INTO exchange_cache (id,data,updated_at) VALUES (1,?,?)',
+                             (json.dumps(seed['exchange']), now))
+                loaded += 1
+        for rate_type in ['bond10yr', 'policy']:
+            if rate_type in seed:
+                if not conn.execute('SELECT 1 FROM oecd_cache WHERE indicator=?', (rate_type,)).fetchone():
+                    conn.execute('INSERT OR IGNORE INTO oecd_cache VALUES (?,?,?)',
+                                 (rate_type, json.dumps(seed[rate_type]), now))
+                    loaded += 1
+    if loaded:
+        print(f'シードデータ読み込み完了 ({loaded}件)')
+
 def is_fresh(updated_at, ttl=CACHE_TTL):
     return (time.time() - updated_at) < ttl
 
@@ -360,6 +400,7 @@ def start_prefetch():
     threading.Thread(target=prefetch_all, daemon=True).start()
 
 init_db()
+load_seed_data()
 start_prefetch()
 
 if __name__ == '__main__':
