@@ -13,6 +13,7 @@ app = Flask(__name__)
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
+DB_VERSION = '5'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -32,6 +33,14 @@ STOCK_INDICES = {
     '^GDAXI':   {'name': 'DAX',      'country': 'DE'},
     '^FTSE':    {'name': 'FTSE100',  'country': 'GB'},
     '000001.SS':{'name': '上海総合', 'country': 'CN'},
+}
+
+STOCK_PE_PROXY = {
+    '^GSPC':    'SPY',
+    '^N225':    'EWJ',
+    '^GDAXI':   'EWG',
+    '^FTSE':    'EWU',
+    '000001.SS':'FXI',
 }
 
 BOND_TICKERS = {
@@ -75,13 +84,21 @@ def init_db():
             ticker TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS oecd_cache (
             indicator TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at REAL NOT NULL)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT)''')
+        row = conn.execute("SELECT value FROM _meta WHERE key='db_version'").fetchone()
+        if not row or row['value'] != DB_VERSION:
+            print('DBバージョン更新: キャッシュをクリアします...')
+            conn.execute('DELETE FROM indicator_cache')
+            conn.execute('DELETE FROM stock_cache')
+            conn.execute('DELETE FROM oecd_cache')
+            conn.execute("INSERT OR REPLACE INTO _meta VALUES ('db_version', ?)", (DB_VERSION,))
 
 def is_fresh(updated_at, ttl=CACHE_TTL):
     return (time.time() - updated_at) < ttl
 
 # ---------- World Bank ----------
 
-def wb_fetch(country, indicator_code, years=12):
+def wb_fetch(country, indicator_code, years=60):
     url = (f'https://api.worldbank.org/v2/country/{country}'
            f'/indicator/{indicator_code}?format=json&mrv={years}&per_page=100')
     try:
@@ -98,9 +115,10 @@ def wb_fetch(country, indicator_code, years=12):
 
 def fetch_and_cache_indicator(country, key, ind_code):
     data = wb_fetch(country, ind_code)
-    with get_db() as conn:
-        conn.execute('INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
-                     (country, key, json.dumps(data), time.time()))
+    if data:
+        with get_db() as conn:
+            conn.execute('INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
+                         (country, key, json.dumps(data), time.time()))
     return data
 
 def get_indicator(country, key):
@@ -145,7 +163,7 @@ def get_exchange():
 def fetch_yf(ticker):
     try:
         t = yf.Ticker(ticker)
-        hist = t.history(period='1y')
+        hist = t.history(period='max')
         if hist.empty:
             return None
         fi = t.fast_info
@@ -154,7 +172,16 @@ def fetch_yf(ticker):
         change_p = round((current - prev) / prev * 100, 2) if prev else 0
         history  = [(str(d.date()), round(float(v), 2))
                     for d, v in zip(hist.index, hist['Close'])]
-        return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history}
+        per = None
+        try:
+            pe_ticker = STOCK_PE_PROXY.get(ticker, ticker)
+            pe_src = yf.Ticker(pe_ticker) if pe_ticker != ticker else t
+            per_raw = pe_src.info.get('trailingPE')
+            if per_raw and per_raw == per_raw:  # not NaN
+                per = round(float(per_raw), 1)
+        except Exception:
+            pass
+        return {'current': current, 'prev': prev, 'change_pct': change_p, 'history': history, 'per': per}
     except Exception:
         return None
 
@@ -176,7 +203,7 @@ def get_stock(ticker):
 
 # ---------- FRED 10年国債・政策金利 ----------
 
-def fetch_fred(series_id, start_year=2013):
+def fetch_fred(series_id, start_year=1960):
     url = f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}'
     try:
         r = requests.get(url, timeout=15)
@@ -200,9 +227,10 @@ def fetch_and_cache_rates(rate_type):
         futures = {code: ex.submit(fetch_fred, sid) for code, sid in series_map.items()}
         for code, fut in futures.items():
             result[code] = fut.result()
-    with get_db() as conn:
-        conn.execute('INSERT OR REPLACE INTO oecd_cache VALUES (?,?,?)',
-                     (rate_type, json.dumps(result), time.time()))
+    if any(v for v in result.values()):
+        with get_db() as conn:
+            conn.execute('INSERT OR REPLACE INTO oecd_cache VALUES (?,?,?)',
+                         (rate_type, json.dumps(result), time.time()))
     return result
 
 def get_rates(rate_type):

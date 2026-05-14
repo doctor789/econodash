@@ -80,25 +80,36 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
 .card-value.neg { color: var(--red); }
 .card-value.neu { color: var(--accent); }
 
-/* Charts section */
+/* Charts */
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(580px, 1fr)); gap: 20px; }
 .chart-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 20px;
 }
-.chart-card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+.chart-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; gap: 8px; flex-wrap: wrap;
+}
+.chart-header h3 { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.period-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.period-btn {
+  padding: 3px 9px; border-radius: 4px; cursor: pointer;
+  font-size: 0.7rem; font-weight: 600;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); transition: all .15s;
+}
+.period-btn:hover:not(.active) { background: var(--border); color: var(--text); }
+.period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .chart-wrap { position: relative; height: 250px; }
 
 /* Country panel */
 #country-panel { display: none; }
-.country-detail {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-}
+.country-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .detail-chart-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 18px;
 }
-.detail-chart-card h3 { font-size: 0.85rem; color: var(--muted); margin-bottom: 14px; }
+.detail-chart-card .chart-header h3 { font-size: 0.85rem; color: var(--muted); }
 .detail-chart-wrap { position: relative; height: 200px; }
 
 /* Loading / error */
@@ -165,23 +176,38 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <p class="section-title" style="margin-top:8px">指標推移（全国比較）</p>
     <div class="charts-grid">
       <div class="chart-card">
-        <h3>📈 GDP 成長率 (%)</h3>
+        <div class="chart-header">
+          <h3>📈 GDP 成長率 (%)</h3>
+          <div class="period-btns" id="pb-chart-gdp"></div>
+        </div>
         <div class="chart-wrap"><canvas id="chart-gdp"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>🔥 インフレ率 / CPI (%)</h3>
+        <div class="chart-header">
+          <h3>🔥 インフレ率 / CPI (%)</h3>
+          <div class="period-btns" id="pb-chart-inf"></div>
+        </div>
         <div class="chart-wrap"><canvas id="chart-inf"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>👷 失業率 (%)</h3>
+        <div class="chart-header">
+          <h3>👷 失業率 (%)</h3>
+          <div class="period-btns" id="pb-chart-unemp"></div>
+        </div>
         <div class="chart-wrap"><canvas id="chart-unemp"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>⚖️ 経常収支 (GDP比 %)</h3>
+        <div class="chart-header">
+          <h3>⚖️ 経常収支 (GDP比 %)</h3>
+          <div class="period-btns" id="pb-chart-ca"></div>
+        </div>
         <div class="chart-wrap"><canvas id="chart-ca"></canvas></div>
       </div>
       <div class="chart-card">
-        <h3>🚢 貿易収支 (GDP比 %)</h3>
+        <div class="chart-header">
+          <h3>🚢 貿易収支 (GDP比 %)</h3>
+          <div class="period-btns" id="pb-chart-trade"></div>
+        </div>
         <div class="chart-wrap"><canvas id="chart-trade"></canvas></div>
       </div>
     </div>
@@ -190,19 +216,43 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
   <!-- Single-indicator panels -->
   <div id="gdp-panel" style="display:none">
     <p class="section-title">GDP 成長率の推移</p>
-    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-gdp-big"></canvas></div></div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>📈 GDP 成長率</h3>
+        <div class="period-btns" id="pb-chart-gdp-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-gdp-big"></canvas></div>
+    </div>
   </div>
   <div id="inflation-panel" style="display:none">
     <p class="section-title">インフレ率 (CPI) の推移</p>
-    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-inf-big"></canvas></div></div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>🔥 インフレ率</h3>
+        <div class="period-btns" id="pb-chart-inf-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-inf-big"></canvas></div>
+    </div>
   </div>
   <div id="unemployment-panel" style="display:none">
     <p class="section-title">失業率の推移</p>
-    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-unemp-big"></canvas></div></div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>👷 失業率</h3>
+        <div class="period-btns" id="pb-chart-unemp-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-unemp-big"></canvas></div>
+    </div>
   </div>
   <div id="trade-panel" style="display:none">
     <p class="section-title">貿易収支の推移 (GDP比 %)</p>
-    <div class="chart-card"><div class="chart-wrap" style="height:360px"><canvas id="chart-trade-big"></canvas></div></div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>🚢 貿易収支</h3>
+        <div class="period-btns" id="pb-chart-trade-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-trade-big"></canvas></div>
+    </div>
   </div>
 
   <!-- Markets panel -->
@@ -211,16 +261,28 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <div id="stock-cards" class="cards-grid">
       <div class="loading"><div class="spinner"></div>データ取得中...</div>
     </div>
-    <p class="section-title" style="margin-top:8px">株価指数 推移（1年・騰落率）</p>
+    <p class="section-title" style="margin-top:8px">株価指数 推移（騰落率）</p>
     <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-header">
+        <h3>📊 株価指数</h3>
+        <div class="period-btns" id="pb-chart-stocks"></div>
+      </div>
       <div class="chart-wrap" style="height:300px"><canvas id="chart-stocks"></canvas></div>
     </div>
     <p class="section-title" style="margin-top:8px">各国 10年国債利回り 推移 (%)</p>
     <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-header">
+        <h3>🏦 10年国債利回り</h3>
+        <div class="period-btns" id="pb-chart-bond10yr"></div>
+      </div>
       <div class="chart-wrap" style="height:300px"><canvas id="chart-bond10yr"></canvas></div>
     </div>
     <p class="section-title" style="margin-top:8px">各国 政策金利（短期金利）推移 (%)</p>
     <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-header">
+        <h3>🏛️ 政策金利</h3>
+        <div class="period-btns" id="pb-chart-policy-rate"></div>
+      </div>
       <div class="chart-wrap" style="height:300px"><canvas id="chart-policy-rate"></canvas></div>
     </div>
     <p class="section-title">米国債利回り（現在値）</p>
@@ -245,8 +307,71 @@ const COUNTRY_NAMES = { JP:'日本', US:'アメリカ', CN:'中国', DE:'ドイ�
 let indicatorData = null;
 let charts = {};
 let activeCountry = 'JP';
+let marketsData = null;
+let ratesData = null;
+const COUNTRY_STOCK = { JP:'^N225', US:'^GSPC', DE:'^GDAXI', GB:'^FTSE', CN:'000001.SS' };
 
-// Clock
+// ---------- Period control ----------
+
+const chartData = {};
+const chartPeriods = {};
+
+const ECON_PERIODS  = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[0,'MAX']];
+const RATES_PERIODS = [[5,'5Y'],[10,'10Y'],[20,'20Y'],[0,'MAX']];
+const STOCK_PERIODS = [[1,'1Y'],[3,'3Y'],[5,'5Y'],[10,'10Y'],[20,'20Y'],[30,'30Y'],[0,'MAX']];
+
+function initPeriodBtns(chartId, periods, defaultYears) {
+  const el = document.getElementById('pb-' + chartId);
+  if (!el) return;
+  if (chartPeriods[chartId] === undefined) chartPeriods[chartId] = defaultYears;
+  const current = chartPeriods[chartId];
+  el.innerHTML = periods.map(([y, lbl]) =>
+    `<button class="period-btn${y === current ? ' active' : ''}" data-years="${y}"
+       onclick="setPeriod('${chartId}',${y})">${lbl}</button>`
+  ).join('');
+}
+
+function setPeriod(chartId, years) {
+  chartPeriods[chartId] = years;
+  const el = document.getElementById('pb-' + chartId);
+  if (el) el.querySelectorAll('.period-btn').forEach(b =>
+    b.classList.toggle('active', +b.dataset.years === years));
+  updateChart(chartId);
+}
+
+function sliceIdx(labels, years) {
+  if (!years) return 0;
+  const now = new Date();
+  now.setFullYear(now.getFullYear() - years);
+  const cutoff = now.toISOString().substring(0, 10);
+  for (let i = 0; i < labels.length; i++) {
+    if (labels[i] >= cutoff.substring(0, labels[i].length)) return i;
+  }
+  return 0;
+}
+
+function updateChart(chartId) {
+  const stored = chartData[chartId];
+  if (!stored || !charts[chartId]) return;
+  const si = sliceIdx(stored.labels, chartPeriods[chartId] ?? 0);
+  const chart = charts[chartId];
+  chart.data.labels = stored.labels.slice(si);
+  if (stored.isStocks) {
+    chart.data.datasets.forEach((ds, i) => {
+      const raw = stored.rawValues[i].slice(si);
+      const base = raw.find(v => v !== null) ?? 1;
+      ds.data = raw.map(v => v !== null ? round2(((v - base) / base) * 100) : null);
+    });
+  } else {
+    chart.data.datasets.forEach((ds, i) => {
+      if (stored.datasets[i]) ds.data = stored.datasets[i].data.slice(si);
+    });
+  }
+  chart.update();
+}
+
+// ---------- Clock ----------
+
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent =
@@ -255,7 +380,8 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Tab switching
+// ---------- Tab switching ----------
+
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', ['overview','gdp','inflation','unemployment','trade','markets','country'][i] === tab);
@@ -268,7 +394,8 @@ function switchTab(tab) {
   else if (tab !== 'overview' && indicatorData) renderBigChart(tab);
 }
 
-// Exchange rates
+// ---------- Exchange rates ----------
+
 async function loadExchange() {
   try {
     const res = await fetch('/api/exchange');
@@ -288,14 +415,14 @@ async function loadExchange() {
   }
 }
 
-// Summary cards
+// ---------- Summary cards ----------
+
 async function loadSummary() {
   try {
     const res = await fetch('/api/summary');
     const data = await res.json();
     const grid = document.getElementById('summary-cards');
     grid.innerHTML = '';
-
     const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct', 'trade_balance'];
     for (const key of indicatorKeys) {
       for (const [code, cdata] of Object.entries(data)) {
@@ -317,17 +444,18 @@ async function loadSummary() {
   }
 }
 
-// Indicator charts (overview)
+// ---------- Indicator charts ----------
+
 async function loadIndicators() {
   const res = await fetch('/api/indicators');
   indicatorData = await res.json();
   const { countries } = indicatorData;
 
-  drawMultiChart('chart-gdp',    countries, 'gdp_growth');
-  drawMultiChart('chart-inf',    countries, 'inflation');
-  drawMultiChart('chart-unemp',  countries, 'unemployment');
-  drawMultiChart('chart-ca',     countries, 'current_acct');
-  drawMultiChart('chart-trade',  countries, 'trade_balance');
+  drawMultiChart('chart-gdp',   countries, 'gdp_growth');
+  drawMultiChart('chart-inf',   countries, 'inflation');
+  drawMultiChart('chart-unemp', countries, 'unemployment');
+  drawMultiChart('chart-ca',    countries, 'current_acct');
+  drawMultiChart('chart-trade', countries, 'trade_balance');
 
   buildCountryTabs();
 }
@@ -347,14 +475,14 @@ function buildDatasets(countries, key) {
       backgroundColor: (COUNTRY_COLORS[code] ?? '#888') + '20',
       borderWidth: 2.5,
       tension: 0.3, fill: false,
-      pointRadius: 4, pointHoverRadius: 7,
+      pointRadius: 3, pointHoverRadius: 7,
       spanGaps: true,
     };
   });
   return { labels, datasets };
 }
 
-function chartOptions(title) {
+function chartOptions() {
   return {
     responsive: true, maintainAspectRatio: false,
     plugins: {
@@ -366,9 +494,8 @@ function chartOptions(title) {
       }
     },
     scales: {
-      x: { ticks: { color: '#8b949e', maxRotation: 45, font: { size: 10 } }, grid: { color: '#21262d' } },
-      y: { ticks: { color: '#8b949e', font: { size: 10 },
-                    callback: v => v + '%' }, grid: { color: '#21262d' } }
+      x: { ticks: { color: '#8b949e', maxRotation: 45, font: { size: 10 }, maxTicksLimit: 15 }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#21262d' } }
     }
   };
 }
@@ -377,8 +504,13 @@ function drawMultiChart(canvasId, countries, key) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   if (charts[canvasId]) charts[canvasId].destroy();
   const { labels, datasets } = buildDatasets(countries, key);
+  chartData[canvasId] = { labels, datasets };
+  initPeriodBtns(canvasId, ECON_PERIODS, 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
   charts[canvasId] = new Chart(ctx, {
-    type: 'line', data: { labels, datasets }, options: chartOptions()
+    type: 'line',
+    data: { labels: labels.slice(si), datasets: datasets.map(d => ({ ...d, data: d.data.slice(si) })) },
+    options: chartOptions()
   });
 }
 
@@ -392,29 +524,30 @@ function renderBigChart(tab) {
   if (charts[canvasId]) charts[canvasId].destroy();
   const { labels, datasets } = buildDatasets(indicatorData.countries, key);
   const brightColors = ['#00d4ff', '#00ff99', '#ff3333', '#ffdd00', '#ee77ff'];
+  const coloredDatasets = datasets.map((d, i) => ({
+    ...d, fill: false,
+    backgroundColor: brightColors[i] ?? d.borderColor,
+    borderColor: brightColors[i] ?? d.borderColor,
+    borderWidth: 1,
+  }));
+  chartData[canvasId] = { labels, datasets: coloredDatasets };
+  initPeriodBtns(canvasId, ECON_PERIODS, 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
   charts[canvasId] = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: datasets.map((d, i) => ({
-        ...d,
-        fill: false,
-        backgroundColor: brightColors[i] ?? d.borderColor,
-        borderColor: brightColors[i] ?? d.borderColor,
-        borderWidth: 1,
-      }))
-    },
+    data: { labels: labels.slice(si), datasets: coloredDatasets.map(d => ({ ...d, data: d.data.slice(si) })) },
     options: {
       ...chartOptions(),
       scales: {
-        x: { ticks: { color: '#8b949e', maxRotation: 45 }, grid: { color: '#21262d' }, stacked: false },
+        x: { ticks: { color: '#8b949e', maxRotation: 45, maxTicksLimit: 15 }, grid: { color: '#21262d' }, stacked: false },
         y: { ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' } }
       }
     }
   });
 }
 
-// Country detail
+// ---------- Country detail ----------
+
 function buildCountryTabs() {
   const container = document.getElementById('country-tabs');
   container.innerHTML = '';
@@ -426,47 +559,53 @@ function buildCountryTabs() {
   showCountry(activeCountry);
 }
 
-function showCountry(code) {
+async function showCountry(code) {
   activeCountry = code;
   document.querySelectorAll('#country-tabs .tab').forEach((t, i) => {
     t.classList.toggle('active', Object.keys(COUNTRY_NAMES)[i] === code);
   });
-
   if (!indicatorData) return;
   const cdata = indicatorData.countries[code];
   if (!cdata) return;
 
   const content = document.getElementById('country-detail-content');
   content.innerHTML = `
+    <p class="section-title">経済指標</p>
     <div class="country-detail">
       <div class="detail-chart-card">
-        <h3>📈 GDP 成長率</h3>
+        <div class="chart-header"><h3>📈 GDP 成長率</h3><div class="period-btns" id="pb-dc-gdp"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-gdp"></canvas></div>
       </div>
       <div class="detail-chart-card">
-        <h3>🔥 インフレ率</h3>
+        <div class="chart-header"><h3>🔥 インフレ率</h3><div class="period-btns" id="pb-dc-inf"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-inf"></canvas></div>
       </div>
       <div class="detail-chart-card">
-        <h3>👷 失業率</h3>
+        <div class="chart-header"><h3>👷 失業率</h3><div class="period-btns" id="pb-dc-unemp"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-unemp"></canvas></div>
       </div>
       <div class="detail-chart-card">
-        <h3>⚖️ 経常収支 (GDP比%)</h3>
+        <div class="chart-header"><h3>⚖️ 経常収支 (GDP比%)</h3><div class="period-btns" id="pb-dc-ca"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-ca"></canvas></div>
       </div>
       <div class="detail-chart-card">
-        <h3>🚢 貿易収支 (GDP比%)</h3>
+        <div class="chart-header"><h3>🚢 貿易収支 (GDP比%)</h3><div class="period-btns" id="pb-dc-trade"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-trade"></canvas></div>
       </div>
+    </div>
+    <p class="section-title" style="margin-top:20px">金融市場</p>
+    <div class="country-detail" id="dc-markets-grid">
+      <div class="loading"><div class="spinner"></div>データ取得中...</div>
     </div>`;
 
   const color = COUNTRY_COLORS[code] ?? '#58a6ff';
-  drawSingleCountry('dc-gdp',   cdata.gdp_growth,    color);
-  drawSingleCountry('dc-inf',   cdata.inflation,      color);
-  drawSingleCountry('dc-unemp', cdata.unemployment,   color);
-  drawSingleCountry('dc-ca',    cdata.current_acct,   color);
-  drawSingleCountry('dc-trade', cdata.trade_balance,  color);
+  drawSingleCountry('dc-gdp',   cdata.gdp_growth,   color);
+  drawSingleCountry('dc-inf',   cdata.inflation,     color);
+  drawSingleCountry('dc-unemp', cdata.unemployment,  color);
+  drawSingleCountry('dc-ca',    cdata.current_acct,  color);
+  drawSingleCountry('dc-trade', cdata.trade_balance, color);
+
+  await drawCountryMarkets(code);
 }
 
 function drawSingleCountry(canvasId, rows, color) {
@@ -476,19 +615,23 @@ function drawSingleCountry(canvasId, rows, color) {
   if (charts[canvasId]) charts[canvasId].destroy();
   const labels = (rows || []).map(r => r[0]);
   const values = (rows || []).map(r => r[1]);
+  chartData[canvasId] = { labels, datasets: [{ data: values }] };
+  initPeriodBtns(canvasId, ECON_PERIODS, chartPeriods[canvasId] ?? 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
   charts[canvasId] = new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: labels.slice(si),
       datasets: [{
-        data: values, borderColor: color,
+        data: values.slice(si), borderColor: color,
         backgroundColor: color + '25',
-        fill: true, tension: 0.3, pointRadius: 4,
+        fill: true, tension: 0.3, pointRadius: 3,
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false },
+      plugins: {
+        legend: { display: false },
         tooltip: {
           backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
           titleColor: '#e6edf3', bodyColor: '#8b949e',
@@ -496,20 +639,136 @@ function drawSingleCountry(canvasId, rows, color) {
         }
       },
       scales: {
-        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#21262d' } },
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 }, grid: { color: '#21262d' } },
         y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#21262d' } }
       }
     }
   });
 }
 
-// Markets
+// ---------- Country markets ----------
+
+async function ensureMarketsData() {
+  if (marketsData && ratesData) return;
+  const [mRes, rRes] = await Promise.all([fetch('/api/markets'), fetch('/api/interest_rates')]);
+  marketsData = await mRes.json();
+  ratesData = await rRes.json();
+}
+
+async function drawCountryMarkets(code) {
+  const grid = document.getElementById('dc-markets-grid');
+  if (!grid) return;
+  try {
+    await ensureMarketsData();
+  } catch(e) {
+    grid.innerHTML = '<span style="color:var(--red)">データ取得失敗</span>';
+    return;
+  }
+
+  const ticker = COUNTRY_STOCK[code];
+  const stockInfo = ticker && marketsData?.stocks?.[ticker];
+  const bond = ratesData?.bond10yr?.[code];
+  const policy = ratesData?.policy?.[code];
+  const color = COUNTRY_COLORS[code] ?? '#58a6ff';
+
+  let html = '';
+  if (stockInfo) html += `
+    <div class="detail-chart-card">
+      <div class="chart-header">
+        <h3>📊 ${stockInfo.name}${stockInfo.per ? `<span style="margin-left:10px;font-size:0.75rem;color:var(--accent);font-weight:400">PER: ${stockInfo.per}x</span>` : ''}</h3>
+        <div class="period-btns" id="pb-dc-stock"></div>
+      </div>
+      <div class="detail-chart-wrap"><canvas id="dc-stock"></canvas></div>
+    </div>`;
+  if (bond) html += `
+    <div class="detail-chart-card">
+      <div class="chart-header"><h3>🏦 10年国債利回り</h3><div class="period-btns" id="pb-dc-bond"></div></div>
+      <div class="detail-chart-wrap"><canvas id="dc-bond"></canvas></div>
+    </div>`;
+  if (policy) html += `
+    <div class="detail-chart-card">
+      <div class="chart-header"><h3>🏛️ 政策金利</h3><div class="period-btns" id="pb-dc-policy"></div></div>
+      <div class="detail-chart-wrap"><canvas id="dc-policy"></canvas></div>
+    </div>`;
+  if (!html) html = '<span style="color:var(--muted)">データなし</span>';
+  grid.innerHTML = html;
+
+  if (stockInfo) drawCountryStockChart('dc-stock', stockInfo.history, color);
+  if (bond)      drawSingleRate('dc-bond',   bond.data,   color);
+  if (policy)    drawSingleRate('dc-policy', policy.data, color);
+}
+
+function drawCountryStockChart(canvasId, history, color) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  const ctx = el.getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const labels = history.map(r => r[0]);
+  const values = history.map(r => r[1]);
+  chartData[canvasId] = { labels, datasets: [{ data: values }] };
+  initPeriodBtns(canvasId, STOCK_PERIODS, chartPeriods[canvasId] ?? 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.slice(si),
+      datasets: [{ data: values.slice(si), borderColor: color, backgroundColor: color + '18',
+        fill: true, tension: 0.2, pointRadius: 0, pointHoverRadius: 5 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: { label: ctx => ` ${ctx.parsed.y?.toLocaleString()}` } } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 0, maxTicksLimit: 10 }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v.toLocaleString() }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+}
+
+function drawSingleRate(canvasId, rows, color) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  const ctx = el.getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const labels = (rows || []).map(r => r[0]);
+  const values = (rows || []).map(r => r[1]);
+  chartData[canvasId] = { labels, datasets: [{ data: values }] };
+  initPeriodBtns(canvasId, RATES_PERIODS, chartPeriods[canvasId] ?? 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.slice(si),
+      datasets: [{ data: values.slice(si), borderColor: color, backgroundColor: color + '25',
+        fill: true, tension: 0.3, pointRadius: 0, pointHoverRadius: 5, spanGaps: true }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: { label: ctx => ` ${ctx.parsed.y?.toFixed(2)}%` } } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+}
+
+// ---------- Markets ----------
+
 let marketsLoaded = false;
 async function loadMarkets() {
   if (marketsLoaded) return;
   try {
     const res = await fetch('/api/markets');
     const data = await res.json();
+    marketsData = data;
 
     // 株カード
     const stockCards = document.getElementById('stock-cards');
@@ -525,31 +784,44 @@ async function loadMarkets() {
           <span class="card-country" style="color:${color}">${COUNTRY_NAMES[d.country] ?? d.country}</span>
           <span class="card-value ${cls}">${d.current.toLocaleString()}</span>
           <span class="card-year ${cls}">${sign}${d.change_pct}%（前日比）</span>
+          ${d.per ? `<span class="card-year" style="color:var(--accent)">PER: ${d.per}x</span>` : ''}
         </div>`;
     }
 
-    // 株価チャート（1年）
+    // 株価チャート
     const allDates = new Set();
     Object.values(data.stocks).forEach(d => d.history.forEach(([dt]) => allDates.add(dt)));
-    const labels = [...allDates].sort();
-    const stockDatasets = Object.entries(data.stocks).map(([tk, d], i) => {
-      const colors = ['#00cfff','#00ff88','#ff4444','#ffcc00','#dd88ff'];
+    const sLabels = [...allDates].sort();
+    const rawValues = Object.entries(data.stocks).map(([, d]) => {
       const map = Object.fromEntries(d.history);
-      const vals = labels.map(dt => map[dt] ?? null);
-      const base = vals.find(v => v !== null) ?? 1;
-      return {
-        label: d.name,
-        data: vals.map(v => v !== null ? round2(((v - base) / base) * 100) : null),
-        borderColor: colors[i], backgroundColor: colors[i]+'20',
-        borderWidth: 2, tension: 0.2, fill: false,
-        pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
-      };
+      return sLabels.map(dt => map[dt] ?? null);
     });
+    const stockNames  = Object.values(data.stocks).map(d => d.name);
+    const stockColors = ['#00cfff','#00ff88','#ff4444','#ffcc00','#dd88ff'];
+
+    chartData['chart-stocks'] = { labels: sLabels, rawValues, isStocks: true };
+    initPeriodBtns('chart-stocks', STOCK_PERIODS, chartPeriods['chart-stocks'] ?? 0);
+    const ssi = sliceIdx(sLabels, chartPeriods['chart-stocks'] ?? 0);
+
+    function buildStockDatasets(si) {
+      return rawValues.map((vals, i) => {
+        const sliced = vals.slice(si);
+        const base = sliced.find(v => v !== null) ?? 1;
+        return {
+          label: stockNames[i],
+          data: sliced.map(v => v !== null ? round2(((v - base) / base) * 100) : null),
+          borderColor: stockColors[i], backgroundColor: stockColors[i] + '20',
+          borderWidth: 2, tension: 0.2, fill: false,
+          pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
+        };
+      });
+    }
+
     const sCtx = document.getElementById('chart-stocks').getContext('2d');
     if (charts['chart-stocks']) charts['chart-stocks'].destroy();
     charts['chart-stocks'] = new Chart(sCtx, {
       type: 'line',
-      data: { labels, datasets: stockDatasets },
+      data: { labels: sLabels.slice(ssi), datasets: buildStockDatasets(ssi) },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -563,7 +835,7 @@ async function loadMarkets() {
         scales: {
           x: { ticks: { color: '#8b949e', maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#21262d' } },
           y: { ticks: { color: '#8b949e', callback: v => v + '%' }, grid: { color: '#21262d' },
-               title: { display: true, text: '1年前比(%)', color: '#8b949e', font: { size: 10 } } }
+               title: { display: true, text: '期間始点比(%)', color: '#8b949e', font: { size: 10 } } }
         }
       }
     });
@@ -571,7 +843,7 @@ async function loadMarkets() {
     // 米国債カード
     const bondCards = document.getElementById('bond-cards');
     bondCards.innerHTML = '';
-    for (const [tk, d] of Object.entries(data.bonds)) {
+    for (const [, d] of Object.entries(data.bonds)) {
       const cls = d.change_pct >= 0 ? 'neg' : 'pos';
       const sign = d.change_pct >= 0 ? '+' : '';
       bondCards.innerHTML += `
@@ -582,12 +854,13 @@ async function loadMarkets() {
         </div>`;
     }
 
-    // 10年国債・政策金利チャート（OECD）
+    // 10年国債・政策金利チャート（FRED）
     const rateRes = await fetch('/api/interest_rates');
     const rateData = await rateRes.json();
+    ratesData = rateData;
     const rateColors = { JP:'#00cfff', US:'#00ff88', DE:'#ffcc00', GB:'#dd88ff' };
 
-    function drawRateChart(canvasId, seriesObj, titleText) {
+    function drawRateChart(canvasId, seriesObj) {
       const allPeriods = new Set();
       Object.values(seriesObj).forEach(c => c.data.forEach(([p]) => allPeriods.add(p)));
       const rLabels = [...allPeriods].sort();
@@ -602,11 +875,14 @@ async function loadMarkets() {
           pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
         };
       });
+      chartData[canvasId] = { labels: rLabels, datasets: rDatasets };
+      initPeriodBtns(canvasId, RATES_PERIODS, chartPeriods[canvasId] ?? 0);
+      const rsi = sliceIdx(rLabels, chartPeriods[canvasId] ?? 0);
       const ctx = document.getElementById(canvasId).getContext('2d');
       if (charts[canvasId]) charts[canvasId].destroy();
       charts[canvasId] = new Chart(ctx, {
         type: 'line',
-        data: { labels: rLabels, datasets: rDatasets },
+        data: { labels: rLabels.slice(rsi), datasets: rDatasets.map(d => ({ ...d, data: d.data.slice(rsi) })) },
         options: {
           responsive: true, maintainAspectRatio: false,
           plugins: {
@@ -625,8 +901,8 @@ async function loadMarkets() {
       });
     }
 
-    drawRateChart('chart-bond10yr',    rateData.bond10yr, '10年国債利回り');
-    drawRateChart('chart-policy-rate', rateData.policy,   '政策金利（短期）');
+    drawRateChart('chart-bond10yr',    rateData.bond10yr);
+    drawRateChart('chart-policy-rate', rateData.policy);
 
     marketsLoaded = true;
   } catch(e) {
@@ -636,7 +912,7 @@ async function loadMarkets() {
 
 function round2(v) { return Math.round(v * 100) / 100; }
 
-// Boot
+// ---------- Boot ----------
 (async () => {
   await Promise.all([loadExchange(), loadSummary()]);
   await loadIndicators();
