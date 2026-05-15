@@ -171,6 +171,9 @@ def fetch_and_cache_indicator(country, key, ind_code):
                          (country, key, json.dumps(data), time.time()))
     return data
 
+# FRED/IMF から計算・取得するためWBから再取得しない指標
+COMPUTED_INDICATORS = {'real_rate', 'debt_gdp'}
+
 def get_indicator(country, key):
     ind_code = INDICATORS[key][0]
     with get_db() as conn:
@@ -178,6 +181,9 @@ def get_indicator(country, key):
                            (country, key)).fetchone()
     if row and is_fresh(row['updated_at']):
         return json.loads(row['data'])
+    # 計算系指標はWB再取得せず既存キャッシュをそのまま返す
+    if key in COMPUTED_INDICATORS:
+        return json.loads(row['data']) if row else []
     return fetch_and_cache_indicator(country, key, ind_code)
 
 # ---------- 為替 ----------
@@ -369,9 +375,10 @@ def prefetch_all():
     with get_db() as conn:
         tasks_ind = [(c, k, ic) for c in COUNTRIES
                      for k, (ic, _) in INDICATORS.items()
-                     if not (row := conn.execute(
+                     if k not in COMPUTED_INDICATORS  # FRED/IMF系はWB取得しない
+                     and (not (row := conn.execute(
                          'SELECT updated_at FROM indicator_cache WHERE country=? AND key=?',
-                         (c, k)).fetchone()) or not is_fresh(row['updated_at'])]
+                         (c, k)).fetchone()) or not is_fresh(row['updated_at']))]
 
         tasks_stk = [tk for tk in {**STOCK_INDICES, **BOND_TICKERS}
                      if not (row := conn.execute(
