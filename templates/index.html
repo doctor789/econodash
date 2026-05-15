@@ -392,6 +392,12 @@ function updateChart(chartId) {
       const base = dsVals[i].find(v => v !== null) ?? 1;
       ds.data = dsVals[i].map(v => v !== null ? round2(((v - base) / base) * 100) : null);
     });
+  } else if (stored.isSingleMb) {
+    const slicedLabels = stored.labels.slice(si);
+    const sliced = stored.rawVals.slice(si);
+    const base = sliced.find(v => v !== null) ?? 1;
+    chart.data.labels = slicedLabels;
+    chart.data.datasets[0].data = sliced.map(v => v !== null ? round2((v / base) * 100) : null);
   } else if (stored.isMb) {
     const slicedLabels = stored.labels.slice(si);
     chart.data.labels = slicedLabels;
@@ -708,6 +714,7 @@ async function drawCountryMarkets(code) {
   const stockInfo = ticker && marketsData?.stocks?.[ticker];
   const bond = ratesData?.bond10yr?.[code];
   const policy = ratesData?.policy?.[code];
+  const mb = ratesData?.monetary_base?.[code];
   const color = COUNTRY_COLORS[code] ?? '#58a6ff';
 
   let html = '';
@@ -729,12 +736,18 @@ async function drawCountryMarkets(code) {
       <div class="chart-header"><h3>🏛️ 政策金利</h3><div class="period-btns" id="pb-dc-policy"></div></div>
       <div class="detail-chart-wrap"><canvas id="dc-policy"></canvas></div>
     </div>`;
+  if (mb) html += `
+    <div class="detail-chart-card">
+      <div class="chart-header"><h3>💰 マネタリーベース（始点=100）</h3><div class="period-btns" id="pb-dc-mb"></div></div>
+      <div class="detail-chart-wrap"><canvas id="dc-mb"></canvas></div>
+    </div>`;
   if (!html) html = '<span style="color:var(--muted)">データなし</span>';
   grid.innerHTML = html;
 
   if (stockInfo) drawCountryStockChart('dc-stock', stockInfo.history, color);
   if (bond)      drawSingleRate('dc-bond',   bond.data,   color);
   if (policy)    drawSingleRate('dc-policy', policy.data, color);
+  if (mb)        drawSingleMb('dc-mb', mb.data, color);
 }
 
 function drawCountryStockChart(canvasId, history, color) {
@@ -794,6 +807,44 @@ function drawSingleRate(canvasId, rows, color) {
       scales: {
         x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 }, grid: { color: '#21262d' } },
         y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#21262d' } }
+      }
+    }
+  });
+}
+
+function drawSingleMb(canvasId, rows, color) {
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  const ctx = el.getContext('2d');
+  if (charts[canvasId]) charts[canvasId].destroy();
+  const labels = (rows || []).map(r => r[0]);
+  const rawVals = (rows || []).map(r => r[1]);
+  // 期間ボタン初期化
+  chartData[canvasId] = { labels, rawVals, isSingleMb: true };
+  initPeriodBtns(canvasId, RATES_PERIODS, chartPeriods[canvasId] ?? 0);
+  const si = sliceIdx(labels, chartPeriods[canvasId] ?? 0);
+  function indexedVals(startIdx) {
+    const sliced = rawVals.slice(startIdx);
+    const base = sliced.find(v => v !== null) ?? 1;
+    return sliced.map(v => v !== null ? round2((v / base) * 100) : null);
+  }
+  charts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.slice(si),
+      datasets: [{ data: indexedVals(si), borderColor: color, backgroundColor: color + '25',
+        fill: true, tension: 0.3, pointRadius: 0, pointHoverRadius: 5, spanGaps: true }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: { label: ctx => ` ${ctx.parsed.y?.toFixed(1)}` } } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45, maxTicksLimit: 12 }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' },
+             title: { display: true, text: '始点=100', color: '#8b949e', font: { size: 10 } } }
       }
     }
   });
