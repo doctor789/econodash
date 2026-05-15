@@ -47,6 +47,12 @@ FRED_SERIES = {
         'DE': 'IRSTCI01DEM156N',
         'GB': 'IRSTCI01GBM156N',
     },
+    'monetary_base': {
+        'US': 'BOGMBASE',
+        'JP': 'MABMM301JPM189S',
+        'DE': 'MABMM301EZM189S',
+        'GB': 'MABMM301GBM189S',
+    },
 }
 
 def wb_fetch(country, indicator_code, years=80):

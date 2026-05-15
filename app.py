@@ -66,6 +66,12 @@ FRED_SERIES = {
         'DE': 'IRSTCI01DEM156N',
         'GB': 'IRSTCI01GBM156N',
     },
+    'monetary_base': {
+        'US': 'BOGMBASE',          # 米国マネタリーベース（月次、1959〜）
+        'JP': 'MABMM301JPM189S',   # 日本M0・月次（OECD、〜2023）
+        'DE': 'MABMM301EZM189S',   # ユーロ圏M0・月次（OECD、〜2023）
+        'GB': 'MABMM301GBM189S',   # 英国M0・月次（OECD、〜2023）
+    },
 }
 
 # ---------- DB ----------
@@ -126,7 +132,7 @@ def load_seed_data():
                 conn.execute('INSERT OR IGNORE INTO exchange_cache (id,data,updated_at) VALUES (1,?,?)',
                              (json.dumps(seed['exchange']), now))
                 loaded += 1
-        for rate_type in ['bond10yr', 'policy']:
+        for rate_type in ['bond10yr', 'policy', 'monetary_base']:
             if rate_type in seed:
                 if not conn.execute('SELECT 1 FROM oecd_cache WHERE indicator=?', (rate_type,)).fetchone():
                     conn.execute('INSERT OR IGNORE INTO oecd_cache VALUES (?,?,?)',
@@ -305,7 +311,7 @@ def prefetch_all():
                          'SELECT updated_at FROM stock_cache WHERE ticker=?',
                          (tk,)).fetchone()) or not is_fresh(row['updated_at'], STOCK_CACHE_TTL)]
 
-        tasks_oecd = [rt for rt in ['bond10yr', 'policy']
+        tasks_oecd = [rt for rt in ['bond10yr', 'policy', 'monetary_base']
                       if not (row := conn.execute(
                           'SELECT updated_at FROM oecd_cache WHERE indicator=?',
                           (rt,)).fetchone()) or not is_fresh(row['updated_at'])]
@@ -402,11 +408,15 @@ def api_interest_rates():
         f_bond   = ex.submit(get_rates, 'bond10yr')
         f_policy = ex.submit(get_rates, 'policy')
     country_names = {'JP': '日本', 'US': 'アメリカ', 'DE': 'ドイツ', 'GB': 'イギリス'}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        f_mb = ex.submit(get_rates, 'monetary_base')
     return jsonify({
-        'bond10yr': {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
-                     for k, v in f_bond.result().items()},
-        'policy':   {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
-                     for k, v in f_policy.result().items()},
+        'bond10yr':      {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
+                          for k, v in f_bond.result().items()},
+        'policy':        {k: {'data': thin_history(v, 1000), 'name': country_names.get(k, k)}
+                          for k, v in f_policy.result().items()},
+        'monetary_base': {k: {'data': thin_history(v, 600), 'name': country_names.get(k, k)}
+                          for k, v in f_mb.result().items()},
     })
 
 @app.route('/api/debug')
