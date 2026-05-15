@@ -15,7 +15,7 @@ _yf_lock = threading.Lock()  # serialize all yfinance fetches to avoid rate limi
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
-DB_VERSION = '9'
+DB_VERSION = '10'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -297,6 +297,71 @@ def get_rates(rate_type):
         return json.loads(row['data'])
     return fetch_and_cache_rates(rate_type)
 
+# ---------- 実質金利（政策金利 - インフレ率）計算 ----------
+
+def compute_and_cache_real_rates():
+    """FRED政策金利 - WBインフレ率 で実質金利を計算しキャッシュに保存。"""
+    try:
+        policy_all = get_rates('policy')
+    except Exception:
+        policy_all = {}
+    with get_db() as conn:
+        for country in ['US', 'JP', 'DE', 'GB']:
+            policy_data = policy_all.get(country, [])
+            if not policy_data:
+                continue
+            row = conn.execute('SELECT data FROM indicator_cache WHERE country=? AND key=?',
+                               (country, 'inflation')).fetchone()
+            if not row:
+                continue
+            inflation = json.loads(row['data'])
+            inf_map = {y: v for y, v in inflation}
+            # 月次→年次平均
+            annual = {}
+            for date, val in policy_data:
+                y = date[:4]
+                annual.setdefault(y, []).append(val)
+            avg = {y: round(sum(vs)/len(vs), 3) for y, vs in annual.items()}
+            # 実質金利 = 政策金利年平均 - インフレ率
+            real = sorted(
+                [(y, round(avg[y] - inf_map[y], 2))
+                 for y in avg if y in inf_map],
+                key=lambda x: x[0]
+            )
+            if real:
+                conn.execute('INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
+                             (country, 'real_rate', json.dumps(real), time.time()))
+                print(f'実質金利計算完了 {country}: {len(real)}件 ({real[0][0]}~{real[-1][0]})')
+
+# ---------- 債務残高/GDP（IMF DataMapper）----------
+
+IMF_COUNTRY = {'JP': 'JPN', 'US': 'USA', 'CN': 'CHN', 'DE': 'DEU', 'GB': 'GBR'}
+
+def fetch_and_cache_imf_debt():
+    """IMF DataMapper APIから政府債務/GDPを取得してキャッシュに保存。"""
+    codes = ','.join(IMF_COUNTRY.values())
+    url = f'https://www.imf.org/external/datamapper/api/v1/GGXWDG_NGDP/{codes}'
+    try:
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
+        values = r.json().get('values', {}).get('GGXWDG_NGDP', {})
+        current_year = str(time.strftime('%Y'))
+        with get_db() as conn:
+            for our_code, imf_code in IMF_COUNTRY.items():
+                country_data = values.get(imf_code, {})
+                series = sorted(
+                    [(str(y), round(float(v), 1))
+                     for y, v in country_data.items()
+                     if str(y) <= current_year and v is not None],
+                    key=lambda x: x[0]
+                )
+                if series:
+                    conn.execute('INSERT OR REPLACE INTO indicator_cache VALUES (?,?,?,?)',
+                                 (our_code, 'debt_gdp', json.dumps(series), time.time()))
+                    print(f'IMF債務GDP {our_code}: {len(series)}件 ({series[0][0]}~{series[-1][0]})')
+    except Exception as e:
+        print(f'IMF debt fetch error: {e}')
+
 # ---------- 起動時プリフェッチ ----------
 
 def prefetch_all():
@@ -338,6 +403,9 @@ def prefetch_all():
         print('キャッシュ完了！')
     else:
         print('キャッシュ有効。即時提供します。')
+    # 計算系指標（常に最新化）
+    compute_and_cache_real_rates()
+    fetch_and_cache_imf_debt()
 
 # ---------- Flask ----------
 

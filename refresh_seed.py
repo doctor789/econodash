@@ -171,6 +171,54 @@ def main():
                 print(f'  FRED {rate_type}/{code}: {len(data)}件 ({data[0][0]}〜{data[-1][0]})')
         seed[rate_type] = result
 
+    # 実質金利 = 政策金利（FRED年平均）- インフレ率（WB）
+    print('実質金利を計算中...')
+    policy_data = seed.get('policy', {})
+    for country in ['US', 'JP', 'DE', 'GB']:
+        pdata = policy_data.get(country, [])
+        inflation = seed['indicators'].get(country, {}).get('inflation', [])
+        if not pdata or not inflation:
+            continue
+        inf_map = {y: v for y, v in inflation}
+        annual = {}
+        for date, val in pdata:
+            y = date[:4]
+            annual.setdefault(y, []).append(val)
+        avg = {y: round(sum(vs)/len(vs), 3) for y, vs in annual.items()}
+        real = sorted(
+            [(y, round(avg[y] - inf_map[y], 2)) for y in avg if y in inf_map],
+            key=lambda x: x[0]
+        )
+        seed['indicators'].setdefault(country, {})['real_rate'] = real
+        if real:
+            print(f'  {country}: {len(real)}件 ({real[0][0]}〜{real[-1][0]})')
+
+    # 債務残高/GDP（IMF DataMapper）
+    print('IMF 債務残高/GDP 取得中...')
+    imf_map = {'JP': 'JPN', 'US': 'USA', 'CN': 'CHN', 'DE': 'DEU', 'GB': 'GBR'}
+    imf_codes = ','.join(imf_map.values())
+    try:
+        import time as _time
+        r = requests.get(
+            f'https://www.imf.org/external/datamapper/api/v1/GGXWDG_NGDP/{imf_codes}',
+            timeout=20)
+        r.raise_for_status()
+        values = r.json().get('values', {}).get('GGXWDG_NGDP', {})
+        current_year = str(_time.strftime('%Y'))
+        for our_code, imf_code in imf_map.items():
+            country_data = values.get(imf_code, {})
+            series = sorted(
+                [(str(y), round(float(v), 1))
+                 for y, v in country_data.items()
+                 if str(y) <= current_year and v is not None],
+                key=lambda x: x[0]
+            )
+            seed['indicators'].setdefault(our_code, {})['debt_gdp'] = series
+            if series:
+                print(f'  {our_code}: {len(series)}件 ({series[0][0]}〜{series[-1][0]}) 最新:{series[-1][1]}%')
+    except Exception as e:
+        print(f'  IMF取得エラー: {e}')
+
     with open(SEED_PATH, 'w', encoding='utf-8') as f:
         json.dump(seed, f, ensure_ascii=False)
 
