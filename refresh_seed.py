@@ -15,6 +15,8 @@ INDICATORS = {
     'unemployment':  'SL.UEM.TOTL.ZS',
     'current_acct':  'BN.CAB.XOKA.GD.ZS',
     'trade_balance': 'NE.RSB.GNFS.ZS',
+    'real_rate':     'FR.INR.RINR',
+    'debt_gdp':      'GC.DOD.TOTL.GD.ZS',
 }
 STOCK_TICKERS = ['^N225', '^GSPC', '^GDAXI', '^FTSE', '000001.SS',
                  '^TNX', '^FVX', '^TYX', '^IRX']

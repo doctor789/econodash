@@ -164,6 +164,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <button class="tab" onclick="switchTab('inflation')">インフレ率</button>
     <button class="tab" onclick="switchTab('unemployment')">失業率</button>
     <button class="tab" onclick="switchTab('trade')">貿易収支</button>
+    <button class="tab" onclick="switchTab('realrate')">実質金利</button>
+    <button class="tab" onclick="switchTab('debt')">債務残高</button>
     <button class="tab" onclick="switchTab('markets')">金融市場</button>
     <button class="tab" onclick="switchTab('country')">国別詳細</button>
   </div>
@@ -217,6 +219,20 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
         </div>
         <div class="chart-wrap"><canvas id="chart-trade"></canvas></div>
       </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>📉 実質金利 (%)</h3>
+          <div class="period-btns" id="pb-chart-realrate"></div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-realrate"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>🏛️ 債務残高/GDP比 (%)</h3>
+          <div class="period-btns" id="pb-chart-debt"></div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-debt"></canvas></div>
+      </div>
     </div>
   </div>
 
@@ -259,6 +275,30 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
         <div class="period-btns" id="pb-chart-trade-big"></div>
       </div>
       <div class="chart-wrap" style="height:360px"><canvas id="chart-trade-big"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Real rate panel -->
+  <div id="realrate-panel" style="display:none">
+    <p class="section-title">実質金利の推移 (%)</p>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>📉 実質金利</h3>
+        <div class="period-btns" id="pb-chart-realrate-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-realrate-big"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Debt panel -->
+  <div id="debt-panel" style="display:none">
+    <p class="section-title">債務残高/GDP比の推移 (%)</p>
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>🏛️ 債務残高/GDP比</h3>
+        <div class="period-btns" id="pb-chart-debt-big"></div>
+      </div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chart-debt-big"></canvas></div>
     </div>
   </div>
 
@@ -428,10 +468,11 @@ updateClock();
 // ---------- Tab switching ----------
 
 function switchTab(tab) {
+  const ALL_TABS = ['overview','gdp','inflation','unemployment','trade','realrate','debt','markets','country'];
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['overview','gdp','inflation','unemployment','trade','markets','country'][i] === tab);
+    t.classList.toggle('active', ALL_TABS[i] === tab);
   });
-  ['overview','gdp','inflation','unemployment','trade','markets','country'].forEach(id => {
+  ALL_TABS.forEach(id => {
     document.getElementById(id + '-panel').style.display = id === tab ? 'block' : 'none';
   });
   if (tab === 'country' && indicatorData) showCountry(activeCountry);
@@ -468,7 +509,7 @@ async function loadSummary() {
     const data = await res.json();
     const grid = document.getElementById('summary-cards');
     grid.innerHTML = '';
-    const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct', 'trade_balance'];
+    const indicatorKeys = ['gdp_growth', 'inflation', 'unemployment', 'current_acct', 'trade_balance', 'real_rate', 'debt_gdp'];
     for (const key of indicatorKeys) {
       for (const [code, cdata] of Object.entries(data)) {
         if (!cdata[key]) continue;
@@ -496,11 +537,13 @@ async function loadIndicators() {
   indicatorData = await res.json();
   const { countries } = indicatorData;
 
-  drawMultiChart('chart-gdp',   countries, 'gdp_growth');
-  drawMultiChart('chart-inf',   countries, 'inflation');
-  drawMultiChart('chart-unemp', countries, 'unemployment');
-  drawMultiChart('chart-ca',    countries, 'current_acct');
-  drawMultiChart('chart-trade', countries, 'trade_balance');
+  drawMultiChart('chart-gdp',      countries, 'gdp_growth');
+  drawMultiChart('chart-inf',      countries, 'inflation');
+  drawMultiChart('chart-unemp',    countries, 'unemployment');
+  drawMultiChart('chart-ca',       countries, 'current_acct');
+  drawMultiChart('chart-trade',    countries, 'trade_balance');
+  drawMultiChart('chart-realrate', countries, 'real_rate');
+  drawMultiChart('chart-debt',     countries, 'debt_gdp');
 
   buildCountryTabs();
 }
@@ -560,10 +603,10 @@ function drawMultiChart(canvasId, countries, key) {
 }
 
 function renderBigChart(tab) {
-  const keyMap = { gdp: 'gdp_growth', inflation: 'inflation', unemployment: 'unemployment', trade: 'trade_balance' };
+  const keyMap = { gdp: 'gdp_growth', inflation: 'inflation', unemployment: 'unemployment', trade: 'trade_balance', realrate: 'real_rate', debt: 'debt_gdp' };
   const key = keyMap[tab];
   if (!key || !indicatorData) return;
-  const canvasMap = { gdp: 'chart-gdp-big', inflation: 'chart-inf-big', unemployment: 'chart-unemp-big', trade: 'chart-trade-big' };
+  const canvasMap = { gdp: 'chart-gdp-big', inflation: 'chart-inf-big', unemployment: 'chart-unemp-big', trade: 'chart-trade-big', realrate: 'chart-realrate-big', debt: 'chart-debt-big' };
   const canvasId = canvasMap[tab];
   const ctx = document.getElementById(canvasId).getContext('2d');
   if (charts[canvasId]) charts[canvasId].destroy();
@@ -637,6 +680,14 @@ async function showCountry(code) {
         <div class="chart-header"><h3>🚢 貿易収支 (GDP比%)</h3><div class="period-btns" id="pb-dc-trade"></div></div>
         <div class="detail-chart-wrap"><canvas id="dc-trade"></canvas></div>
       </div>
+      <div class="detail-chart-card">
+        <div class="chart-header"><h3>📉 実質金利</h3><div class="period-btns" id="pb-dc-realrate"></div></div>
+        <div class="detail-chart-wrap"><canvas id="dc-realrate"></canvas></div>
+      </div>
+      <div class="detail-chart-card">
+        <div class="chart-header"><h3>🏛️ 債務残高/GDP比</h3><div class="period-btns" id="pb-dc-debt"></div></div>
+        <div class="detail-chart-wrap"><canvas id="dc-debt"></canvas></div>
+      </div>
     </div>
     <p class="section-title" style="margin-top:20px">金融市場</p>
     <div class="country-detail" id="dc-markets-grid">
@@ -644,11 +695,13 @@ async function showCountry(code) {
     </div>`;
 
   const color = COUNTRY_COLORS[code] ?? '#58a6ff';
-  drawSingleCountry('dc-gdp',   cdata.gdp_growth,   color);
-  drawSingleCountry('dc-inf',   cdata.inflation,     color);
-  drawSingleCountry('dc-unemp', cdata.unemployment,  color);
-  drawSingleCountry('dc-ca',    cdata.current_acct,  color);
-  drawSingleCountry('dc-trade', cdata.trade_balance, color);
+  drawSingleCountry('dc-gdp',     cdata.gdp_growth,   color);
+  drawSingleCountry('dc-inf',     cdata.inflation,     color);
+  drawSingleCountry('dc-unemp',   cdata.unemployment,  color);
+  drawSingleCountry('dc-ca',      cdata.current_acct,  color);
+  drawSingleCountry('dc-trade',   cdata.trade_balance, color);
+  drawSingleCountry('dc-realrate',cdata.real_rate,     color);
+  drawSingleCountry('dc-debt',    cdata.debt_gdp,      color);
 
   await drawCountryMarkets(code);
 }

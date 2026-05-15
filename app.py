@@ -15,7 +15,7 @@ _yf_lock = threading.Lock()  # serialize all yfinance fetches to avoid rate limi
 DB_PATH = Path(__file__).parent / 'cache.db'
 CACHE_TTL       = 60 * 60 * 24
 STOCK_CACHE_TTL = 60 * 60
-DB_VERSION = '8'
+DB_VERSION = '9'
 
 COUNTRIES = {
     'JP': '日本', 'US': 'アメリカ', 'CN': '中国', 'DE': 'ドイツ', 'GB': 'イギリス',
@@ -27,6 +27,8 @@ INDICATORS = {
     'unemployment':  ('SL.UEM.TOTL.ZS',    '失業率'),
     'current_acct':  ('BN.CAB.XOKA.GD.ZS', '経常収支(GDP比%)'),
     'trade_balance': ('NE.RSB.GNFS.ZS',    '貿易収支(GDP比%)'),
+    'real_rate':     ('FR.INR.RINR',        '実質金利'),
+    'debt_gdp':      ('GC.DOD.TOTL.GD.ZS', '債務残高/GDP比'),
 }
 
 STOCK_INDICES = {
