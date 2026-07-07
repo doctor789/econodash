@@ -138,9 +138,68 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
 .badge.up { background: #3fb95020; color: var(--green); }
 .badge.down { background: #f8514920; color: var(--red); }
 
+/* Quantum panel */
+.q-intro {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px; margin-bottom: 18px;
+  font-size: 0.88rem; line-height: 1.7; color: var(--text);
+}
+.q-eq { font-family: 'Cambria Math', 'Georgia', serif; font-style: italic;
+  background: #ffffff08; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.q-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.q-ctl-label { font-size: 0.75rem; color: var(--muted); }
+.q-metric {
+  padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  font-size: 0.8rem; font-weight: 600;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); transition: all .15s;
+}
+.q-metric:hover:not(.active) { background: var(--border); color: var(--text); }
+.q-metric.active { background: var(--purple); color: #fff; border-color: var(--purple); }
+
+.q-heatmap-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; margin-bottom: 8px;
+}
+.q-heatmap { display: grid; gap: 3px; width: 100%; }
+.q-hm-cell {
+  aspect-ratio: 1 / 1; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  cursor: default; transition: transform .1s;
+}
+.q-hm-cell:hover { transform: scale(1.05); }
+.q-hm-head {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+  text-align: center; padding: 2px; overflow: hidden;
+}
+.q-hm-corner { }
+.q-legend { display: flex; align-items: center; gap: 10px; margin-top: 14px;
+  font-size: 0.72rem; color: var(--muted); flex-wrap: wrap; }
+.q-legend-bar { height: 12px; width: 160px; border-radius: 3px; }
+
+.q-table { width: 100%; border-collapse: collapse; font-size: 0.8rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.q-table th, .q-table td { padding: 9px 11px; text-align: right;
+  border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.q-table th { color: var(--muted); font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: .4px; font-weight: 600; }
+.q-table td.pair { text-align: left; font-weight: 600; color: var(--text); }
+.q-table tr:last-child td { border-bottom: none; }
+.q-table td.pos { color: var(--green); }
+.q-table td.neg { color: var(--red); }
+
+.q-math { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 22px; font-size: 0.84rem; line-height: 1.9; }
+.q-math ol { padding-left: 20px; }
+.q-math li { margin-bottom: 6px; }
+
 @media (max-width: 768px) {
   .charts-grid { grid-template-columns: 1fr; }
   .country-detail { grid-template-columns: 1fr; }
+  .q-hm-cell { font-size: 0.6rem; }
+  .q-hm-head { font-size: 0.58rem; }
 }
 </style>
 </head>
@@ -167,6 +226,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     <button class="tab" onclick="switchTab('realrate')">実質金利</button>
     <button class="tab" onclick="switchTab('debt')">債務残高</button>
     <button class="tab" onclick="switchTab('markets')">金融市場</button>
+    <button class="tab" onclick="switchTab('quantum')">量子相関</button>
     <button class="tab" onclick="switchTab('country')">国別詳細</button>
   </div>
 
@@ -346,6 +406,51 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
     </div>
   </div>
 
+  <!-- Quantum VC-correlation panel -->
+  <div id="quantum-panel" style="display:none">
+    <p class="section-title">VC相関の量子情報論的再定式化</p>
+    <div class="q-intro">
+      <p>
+        <b>VC相関</b>（ボラティリティ条件付き方向性相関）を、各資産の標準化リターンを
+        Bloch 球上のキュービットに符号化し、時間アンサンブルの密度行列
+        <span class="q-eq">ρ<sub>AB</sub></span> から
+        <b>量子相互情報量</b> <span class="q-eq">I(A:B)=S(ρ<sub>A</sub>)+S(ρ<sub>B</sub>)−S(ρ<sub>AB</sub>)</span>
+        と<b>エンタングルメント・エントロピー</b>として再定式化した指標です。
+        主要株価指数（直近約3年・日次）の共通取引日で算出しています。
+      </p>
+    </div>
+
+    <div class="q-controls">
+      <span class="q-ctl-label">表示指標:</span>
+      <button class="q-metric active" data-metric="vcq"  onclick="setQMetric('vcq')">符号付きVC-Q相関</button>
+      <button class="q-metric"        data-metric="qmi"  onclick="setQMetric('qmi')">量子相互情報量 I(A:B)</button>
+    </div>
+
+    <div id="quantum-content">
+      <div class="loading"><div class="spinner"></div>密度行列を計算中...</div>
+    </div>
+
+    <p class="section-title" style="margin-top:20px">ペア別の量子情報量</p>
+    <div id="quantum-table-wrap" style="overflow-x:auto"></div>
+
+    <p class="section-title" style="margin-top:20px">数理的枠組み</p>
+    <div class="q-math">
+      <ol>
+        <li><b>ログリターン</b> <span class="q-eq">r<sub>X</sub>(t)=ln P<sub>X</sub>(t)/P<sub>X</sub>(t−1)</span></li>
+        <li><b>局所ボラティリティ</b> <span class="q-eq">σ<sub>X</sub>(t)</span> を EWMA で推定（条件づけの "V"）</li>
+        <li><b>標準化リターン</b> <span class="q-eq">z<sub>X</sub>(t)=r<sub>X</sub>(t)/σ<sub>X</sub>(t)</span></li>
+        <li><b>キュービット符号化</b> <span class="q-eq">|ψ<sub>X</sub>⟩=cos(θ/2)|↑⟩+sin(θ/2)|↓⟩</span>,
+            <span class="q-eq">θ=π·s(−k·z)</span>（強上昇→|↑⟩, 強下落→|↓⟩, 静穏→赤道: 方向の "C"）</li>
+        <li><b>アンサンブル密度行列</b> <span class="q-eq">ρ<sub>AB</sub>=Σ<sub>t</sub> w(t)|ψ<sub>A</sub>⊗ψ<sub>B</sub>⟩⟨ψ<sub>A</sub>⊗ψ<sub>B</sub>|</span>,
+            <span class="q-eq">w(t)∝σ<sub>A</sub>σ<sub>B</sub></span></li>
+        <li><b>量子相互情報量</b> <span class="q-eq">I(A:B)=S(ρ<sub>A</sub>)+S(ρ<sub>B</sub>)−S(ρ<sub>AB</sub>)≥0</span>,
+            <span class="q-eq">S(ρ)=−Σλ<sub>i</sub>log₂λ<sub>i</sub></span></li>
+        <li><b>エンタングルメント・エントロピー</b>: 平均振幅行列の Schmidt 分解より /
+            <b>l1 コヒーレンス</b>: ρ<sub>AB</sub> の非対角成分和（量子的寄与）</li>
+      </ol>
+    </div>
+  </div>
+
   <!-- Country detail panel -->
   <div id="country-panel">
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap" id="country-tabs"></div>
@@ -468,7 +573,7 @@ updateClock();
 // ---------- Tab switching ----------
 
 function switchTab(tab) {
-  const ALL_TABS = ['overview','gdp','inflation','unemployment','trade','realrate','debt','markets','country'];
+  const ALL_TABS = ['overview','gdp','inflation','unemployment','trade','realrate','debt','markets','quantum','country'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', ALL_TABS[i] === tab);
   });
@@ -477,7 +582,139 @@ function switchTab(tab) {
   });
   if (tab === 'country' && indicatorData) showCountry(activeCountry);
   else if (tab === 'markets') loadMarkets();
+  else if (tab === 'quantum') loadQuantum();
   else if (tab !== 'overview' && indicatorData) renderBigChart(tab);
+}
+
+// ---------- Quantum VC-correlation ----------
+
+let quantumData = null;
+let qMetric = 'vcq';
+
+async function loadQuantum(retry = 0) {
+  if (quantumData) { renderQuantum(); return; }
+  const content = document.getElementById('quantum-content');
+  try {
+    const res = await fetch('/api/vc_correlation');
+    const data = await res.json();
+    if (!data.keys || data.keys.length < 2) {
+      if (retry < 3) { setTimeout(() => loadQuantum(retry + 1), 8000); return; }
+      content.innerHTML = '<div class="loading" style="color:var(--red)">データが不足しています</div>';
+      return;
+    }
+    quantumData = data;
+    renderQuantum();
+  } catch (e) {
+    if (retry < 3) { setTimeout(() => loadQuantum(retry + 1), 8000); return; }
+    content.innerHTML = '<div class="loading" style="color:var(--red)">量子相関の取得に失敗しました</div>';
+  }
+}
+
+function setQMetric(m) {
+  qMetric = m;
+  document.querySelectorAll('.q-metric').forEach(b =>
+    b.classList.toggle('active', b.dataset.metric === m));
+  if (quantumData) renderQuantum();
+}
+
+// signed VC-Q: blue(+)/red(-); QMI: purple sequential
+function qCellColor(v, maxAbs) {
+  if (v === null || v === undefined) return { bg: 'var(--border)', fg: 'var(--muted)' };
+  if (qMetric === 'qmi') {
+    const t = maxAbs > 0 ? Math.min(v / maxAbs, 1) : 0;
+    const a = 0.12 + 0.75 * t;
+    return { bg: `rgba(188,140,255,${a.toFixed(3)})`, fg: t > 0.55 ? '#fff' : 'var(--text)' };
+  }
+  const t = maxAbs > 0 ? Math.min(Math.abs(v) / maxAbs, 1) : 0;
+  const a = 0.12 + 0.75 * t;
+  const rgb = v >= 0 ? '88,166,255' : '248,81,73';
+  return { bg: `rgba(${rgb},${a.toFixed(3)})`, fg: t > 0.55 ? '#fff' : 'var(--text)' };
+}
+
+function renderQuantum() {
+  const d = quantumData;
+  const n = d.keys.length;
+  const names = d.names;
+  const mat = qMetric === 'qmi' ? d.qmi_matrix : d.matrix;
+
+  // max abs of off-diagonal for auto color scaling
+  let maxAbs = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++)
+      if (i !== j && mat[i][j] != null) maxAbs = Math.max(maxAbs, Math.abs(mat[i][j]));
+
+  const cols = `minmax(56px,0.9fr) repeat(${n}, 1fr)`;
+  let html = `<div class="q-heatmap-card"><div class="q-heatmap" style="grid-template-columns:${cols}">`;
+  html += `<div class="q-hm-head q-hm-corner"></div>`;
+  for (let j = 0; j < n; j++) html += `<div class="q-hm-head">${names[j]}</div>`;
+  for (let i = 0; i < n; i++) {
+    html += `<div class="q-hm-head" style="justify-content:flex-end;padding-right:6px">${names[i]}</div>`;
+    for (let j = 0; j < n; j++) {
+      const v = mat[i][j];
+      const c = qCellColor(i === j ? (qMetric === 'qmi' ? maxAbs : 1) : v, maxAbs);
+      const txt = v == null ? '—' : (i === j ? '—' : v.toFixed(3));
+      const title = `${names[i]} × ${names[j]}`;
+      html += `<div class="q-hm-cell" style="background:${c.bg};color:${c.fg}" title="${title}">${txt}</div>`;
+    }
+  }
+  html += `</div>`;
+  if (qMetric === 'qmi') {
+    html += `<div class="q-legend"><span>低</span>
+      <div class="q-legend-bar" style="background:linear-gradient(90deg,rgba(188,140,255,.12),rgba(188,140,255,.87))"></div>
+      <span>高</span><span style="margin-left:8px">量子相互情報量 I(A:B)（bits, 0〜2 を正規化）</span></div>`;
+  } else {
+    html += `<div class="q-legend"><span>逆連動</span>
+      <div class="q-legend-bar" style="background:linear-gradient(90deg,rgba(248,81,73,.87),var(--border),rgba(88,166,255,.87))"></div>
+      <span>順連動</span><span style="margin-left:8px">符号付きVC-Q相関（方向×正規化量子相互情報量, −1〜+1）</span></div>`;
+  }
+  html += `</div>`;
+  document.getElementById('quantum-content').innerHTML = html;
+
+  renderQuantumTable();
+}
+
+function renderQuantumTable() {
+  const d = quantumData;
+  const names = d.names;
+  const rows = [];
+  for (const [ij, p] of Object.entries(d.pairs)) {
+    if (!p) continue;
+    const [i, j] = ij.split(',').map(Number);
+    rows.push({ pair: `${names[i]} × ${names[j]}`, ...p });
+  }
+  rows.sort((a, b) => b.quantum_mutual_info_norm - a.quantum_mutual_info_norm);
+  let h = `<table class="q-table"><thead><tr>
+    <th style="text-align:left">ペア</th>
+    <th>符号付きVC-Q</th>
+    <th>I(A:B) [bits]</th>
+    <th>S(ρ<sub>A</sub>)</th>
+    <th>S(ρ<sub>B</sub>)</th>
+    <th>S(ρ<sub>AB</sub>)</th>
+    <th>Ent.エントロピー</th>
+    <th>l1コヒーレンス</th>
+    <th>符号相関</th>
+    <th>古典Pearson</th>
+    <th>N</th>
+  </tr></thead><tbody>`;
+  for (const r of rows) {
+    const sc = r.vcq_correlation >= 0 ? 'pos' : 'neg';
+    const pc = r.pearson >= 0 ? 'pos' : 'neg';
+    h += `<tr>
+      <td class="pair">${r.pair}</td>
+      <td class="${sc}">${r.vcq_correlation >= 0 ? '+' : ''}${r.vcq_correlation.toFixed(3)}</td>
+      <td>${r.quantum_mutual_info.toFixed(4)}</td>
+      <td>${r.entropy_A.toFixed(3)}</td>
+      <td>${r.entropy_B.toFixed(3)}</td>
+      <td>${r.entropy_AB.toFixed(3)}</td>
+      <td>${r.entanglement_entropy.toFixed(4)}</td>
+      <td>${r.l1_coherence.toFixed(3)}</td>
+      <td class="${r.sign_corr >= 0 ? 'pos' : 'neg'}">${r.sign_corr >= 0 ? '+' : ''}${r.sign_corr.toFixed(3)}</td>
+      <td class="${pc}">${r.pearson >= 0 ? '+' : ''}${r.pearson.toFixed(3)}</td>
+      <td>${r.n}</td>
+    </tr>`;
+  }
+  h += `</tbody></table>`;
+  document.getElementById('quantum-table-wrap').innerHTML = h;
 }
 
 // ---------- Exchange rates ----------

@@ -4,3 +4,7 @@
 !.elasticbeanstalk/*.cfg.yml
 !.elasticbeanstalk/*.global.yml
 cache.db
+
+# Python
+__pycache__/
+*.pyc

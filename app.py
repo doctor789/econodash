@@ -7,6 +7,7 @@ import threading
 import concurrent.futures
 from pathlib import Path
 import yfinance as yf
+import quantum_vc
 
 app = Flask(__name__)
 
@@ -495,6 +496,26 @@ def api_interest_rates():
         'monetary_base': {k: {'data': thin_history(v, 600), 'name': country_names.get(k, k)}
                           for k, v in f_mb.result().items()},
     })
+
+@app.route('/api/vc_correlation')
+def api_vc_correlation():
+    """株価指数間の VC相関を量子情報論（量子相互情報量・エンタングルメント
+    エントロピー）の枠組みで再定式化した相関行列を返す。"""
+    histories = {}
+    names = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {tk: ex.submit(get_stock, tk) for tk in STOCK_INDICES}
+        for tk, fut in futures.items():
+            d = fut.result()
+            hist = d.get('history') if d else None
+            if hist and len(hist) > 30:
+                # 直近約3年（取引日）に限定して近年の連関を評価
+                histories[tk] = hist[-800:]
+                names[tk] = STOCK_INDICES[tk]['name']
+    result = quantum_vc.correlation_matrix(histories)
+    result['names'] = [names[k] for k in result['keys']]
+    result['tickers'] = result['keys']
+    return jsonify(result)
 
 @app.route('/api/debug')
 def api_debug():
